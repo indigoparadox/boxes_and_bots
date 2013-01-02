@@ -1,9 +1,11 @@
 package com.quartziris.psubot;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.util.HashMap;
 import java.util.UUID;
 
 import android.os.Bundle;
@@ -12,6 +14,7 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
 import android.content.Intent;
+import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.View;
 import android.widget.Button;
@@ -19,8 +22,12 @@ import android.widget.EditText;
 import android.widget.Toast;
 
 public class ControlActivity extends Activity {
-   OutputStreamWriter cSwrOutput = null;
-   InputStreamReader cSreInput = null;
+   protected BluetoothSocket cBtSocket = null;
+   protected OutputStreamWriter cSwrOutput = null;
+   protected InputStreamReader cSreInput = null;
+   
+   protected HashMap<Integer,String> cMapKeysDown = new HashMap<Integer,String>();
+   protected HashMap<Integer,String> cMapKeysUp = new HashMap<Integer,String>();
 
 	private static final int REQUEST_ENABLE_BT = 1;
 
@@ -28,6 +35,36 @@ public class ControlActivity extends Activity {
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_control);
+		
+		// LED keys.
+		cMapKeysDown.put( KeyEvent.KEYCODE_J, "LED RED\r" );
+		cMapKeysDown.put( KeyEvent.KEYCODE_K, "LED GREEN\r" );
+		cMapKeysDown.put( KeyEvent.KEYCODE_L, "LED BLUE\r" );
+		
+		// Driving keys.
+		cMapKeysDown.put( KeyEvent.KEYCODE_W, "DRIVE F\r" );
+		cMapKeysUp.put( KeyEvent.KEYCODE_W, "DRIVE S\r" );
+      cMapKeysDown.put( KeyEvent.KEYCODE_A, "DRIVE L\r" );
+      cMapKeysUp.put( KeyEvent.KEYCODE_A, "DRIVE S\r" );
+      cMapKeysDown.put( KeyEvent.KEYCODE_S, "DRIVE B\r" );
+      cMapKeysUp.put( KeyEvent.KEYCODE_S, "DRIVE S\r" );
+      cMapKeysDown.put( KeyEvent.KEYCODE_D, "DRIVE R\r" );
+      cMapKeysUp.put( KeyEvent.KEYCODE_D, "DRIVE S\r" );
+      cMapKeysDown.put( KeyEvent.KEYCODE_Q, "DRIVE PL\r" );
+      cMapKeysUp.put( KeyEvent.KEYCODE_Q, "DRIVE S\r" );
+      cMapKeysDown.put( KeyEvent.KEYCODE_E, "DRIVE PR\r" );
+      cMapKeysUp.put( KeyEvent.KEYCODE_E, "DRIVE S\r" );
+      
+      // Eye keys.
+      cMapKeysDown.put( KeyEvent.KEYCODE_Z, "EYE L\r" );
+      cMapKeysUp.put( KeyEvent.KEYCODE_Z, "EYE S\r" );
+      cMapKeysDown.put( KeyEvent.KEYCODE_C, "EYE R\r" );
+      cMapKeysUp.put( KeyEvent.KEYCODE_C, "EYE S\r" );
+      
+      // Beep keys.
+      cMapKeysDown.put( KeyEvent.KEYCODE_B, "BEEP 76 100\r" );
+      cMapKeysDown.put( KeyEvent.KEYCODE_N, "BEEP 67 100\r" );
+      cMapKeysDown.put( KeyEvent.KEYCODE_M, "BEEP 60 100\r" );
 		
 		Button btnConnect = (Button)findViewById( R.id.btnConnect );
 		EditText txtBTMAC = (EditText)findViewById( R.id.txtBTMAC );
@@ -49,11 +86,61 @@ public class ControlActivity extends Activity {
 		getMenuInflater().inflate(R.menu.activity_control, menu);
 		return true;
 	}
+	
+   @Override
+   protected void onPause() {
+      super.onPause();
+      
+      try {
+         if( null != cBtSocket ) {
+            cBtSocket.close();
+         }
+      } catch( IOException ex ) {
+         Toast.makeText( this, ex.getMessage(), Toast.LENGTH_LONG ).show();
+      }
+   }
 
-	protected void doConnect() {
+	@Override
+   public boolean onKeyDown( int keyCode, KeyEvent event ) {
+      //Toast.makeText( this, "KeyDown", Toast.LENGTH_LONG ).show();
+      
+      if( 
+         null != cSwrOutput && cMapKeysDown.containsKey( keyCode ) 
+      ) {
+         try {
+            cSwrOutput.write( cMapKeysDown.get( keyCode ) );
+            cSwrOutput.flush();
+            //Toast.makeText( this, "Sent!", Toast.LENGTH_SHORT ).show();
+         } catch( IOException ex ) {
+            Toast.makeText( this, ex.getMessage(), Toast.LENGTH_LONG ).show();
+         }
+      }
+      
+      return super.onKeyDown( keyCode, event );
+   }
+
+   @Override
+   public boolean onKeyUp( int keyCode, KeyEvent event ) {
+      //Toast.makeText( this, "KeyUp", Toast.LENGTH_LONG ).show();
+
+      if( 
+         null != cSwrOutput && cMapKeysUp.containsKey( keyCode ) 
+      ) {
+         try {
+            cSwrOutput.write( cMapKeysUp.get( keyCode ) );
+            cSwrOutput.flush();
+            //Toast.makeText( this, "Sent!", Toast.LENGTH_SHORT ).show();
+         } catch( IOException ex ) {
+            Toast.makeText( this, ex.getMessage(), Toast.LENGTH_LONG ).show();
+         }
+      }
+      
+      return super.onKeyUp( keyCode, event );
+   }
+
+   protected void doConnect() {
 	   EditText txtBTMAC = (EditText)findViewById( R.id.txtBTMAC );
 	   BluetoothDevice devPSUBot;
-	   BluetoothSocket btSocket;
 	   InputStream stmInput = null;
 	   OutputStream stmOutput = null;
       
@@ -82,15 +169,15 @@ public class ControlActivity extends Activity {
          devPSUBot = btaBluetoothAdapter.getRemoteDevice( 
             txtBTMAC.getText().toString()
          );
-         btSocket = devPSUBot.createRfcommSocketToServiceRecord(
+         cBtSocket = devPSUBot.createRfcommSocketToServiceRecord(
             UUID.fromString( "00001101-0000-1000-8000-00805F9B34FB" )
          );
-         btSocket.connect();
+         cBtSocket.connect();
          
          Toast.makeText( this, "Connected.", Toast.LENGTH_LONG ).show();
          
-         stmInput = btSocket.getInputStream();
-         stmOutput = btSocket.getOutputStream();
+         stmInput = cBtSocket.getInputStream();
+         stmOutput = cBtSocket.getOutputStream();
          cSwrOutput = new OutputStreamWriter( stmOutput );
          cSreInput = new InputStreamReader( stmInput );
          
