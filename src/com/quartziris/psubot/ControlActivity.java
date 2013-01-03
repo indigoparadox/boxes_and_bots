@@ -10,21 +10,28 @@ import java.util.UUID;
 
 import android.os.Bundle;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.TextView;
 import android.widget.Toast;
 
 public class ControlActivity extends Activity {
+   public final static String DEFAULT_MAC = "00:18:A1:12:0F:F9";
+   
    protected BluetoothSocket cBtSocket = null;
    protected OutputStreamWriter cSwrOutput = null;
    protected InputStreamReader cSreInput = null;
+   
+   protected String cStrCurrentMAC;
    
    protected HashMap<Integer,String> cMapKeysDown = new HashMap<Integer,String>();
    protected HashMap<Integer,String> cMapKeysUp = new HashMap<Integer,String>();
@@ -67,12 +74,25 @@ public class ControlActivity extends Activity {
       cMapKeysDown.put( KeyEvent.KEYCODE_M, "BEEP 60 100\r" );
 		
 		Button btnConnect = (Button)findViewById( R.id.btnConnect );
-		EditText txtBTMAC = (EditText)findViewById( R.id.txtBTMAC );
+		Button btnBTMacEdit = (Button)findViewById( R.id.btnBTMacEdit );
+		//EditText txtBTMAC = (EditText)findViewById( R.id.txtBTMAC );
 		
-		txtBTMAC.setText( "00:18:A1:12:0F:F9" );
+		// Set the MAC to the default for now.
+		// TODO: Load the previously saved MAC if present.
+		changeMAC( DEFAULT_MAC );
+		
+		btnBTMacEdit.setOnClickListener(
+		   new View.OnClickListener() {
+            @Override
+            public void onClick( View view ) {
+               changeMAC();
+            }
+         }
+		);		
 
 	   btnConnect.setOnClickListener(
 	      new View.OnClickListener() {
+	         @Override
 	         public void onClick( View view ) {
 	            doConnect();
 	         }
@@ -137,9 +157,44 @@ public class ControlActivity extends Activity {
       
       return super.onKeyUp( keyCode, event );
    }
+   
+   protected void changeMAC() {
+      final EditText txtInputMAC = new EditText( this );
+   
+      new AlertDialog.Builder( this )
+          .setTitle( "Update Status" )
+          .setMessage( "Please enter the PSUBot MAC." )
+          .setView( txtInputMAC )
+          .setPositiveButton( 
+             "OK", new DialogInterface.OnClickListener() {
+                public void onClick(
+                   DialogInterface dialog, int whichButton
+                ) {
+                   changeMAC( txtInputMAC.getText().toString() );
+                }
+          } )
+          .setNegativeButton(
+             "Cancel", new DialogInterface.OnClickListener() {
+                public void onClick(
+                   DialogInterface dialog, int whichButton
+                ) {
+                }
+          } ).show();
+   }
+   
+   protected void changeMAC( String strNewMacIn ) {
+      TextView lblBTMAC = (TextView)findViewById( R.id.lblBTMac );
+
+      if( BluetoothAdapter.checkBluetoothAddress( strNewMacIn ) ) {
+         cStrCurrentMAC = strNewMacIn;
+         lblBTMAC.setText( strNewMacIn );
+      } else {
+         Toast.makeText( this, "Invalid MAC specified.",
+            Toast.LENGTH_LONG ).show();
+      }
+   }
 
    protected void doConnect() {
-	   EditText txtBTMAC = (EditText)findViewById( R.id.txtBTMAC );
 	   BluetoothDevice devPSUBot;
 	   InputStream stmInput = null;
 	   OutputStream stmOutput = null;
@@ -166,9 +221,7 @@ public class ControlActivity extends Activity {
       }
 
       try {
-         devPSUBot = btaBluetoothAdapter.getRemoteDevice( 
-            txtBTMAC.getText().toString()
-         );
+         devPSUBot = btaBluetoothAdapter.getRemoteDevice( cStrCurrentMAC );
          cBtSocket = devPSUBot.createRfcommSocketToServiceRecord(
             UUID.fromString( "00001101-0000-1000-8000-00805F9B34FB" )
          );

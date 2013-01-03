@@ -4,23 +4,33 @@
     android:layout_height="fill_parent"
     tools:context=".ControlActivity" >
 
-    <Button
-        android:id="@+id/btnConnect"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_alignTop="@+id/txtBTMAC"
-        android:layout_toRightOf="@+id/txtBTMAC"
-        android:text="Connect" />
-
-    <EditText
-        android:id="@+id/txtBTMAC"
+    <TextView
+        android:id="@+id/lblBTMac"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_alignParentLeft="true"
         android:layout_alignParentTop="true"
-        android:ems="10" >
+        android:layout_marginLeft="16dp"
+        android:layout_marginTop="16dp"
+        android:layout_toLeftOf="@+id/btnBTMacEdit"
+        android:textAppearance="?android:attr/textAppearanceLarge" />
 
-        <requestFocus />
-    </EditText>
+    <Button
+        android:id="@+id/btnBTMacEdit"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignBaseline="@+id/lblBTMac"
+        android:layout_alignBottom="@+id/lblBTMac"
+        android:layout_toLeftOf="@+id/btnConnect"
+        android:text="@string/change_mac" />
+
+    <Button
+        android:id="@+id/btnConnect"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignBaseline="@+id/btnBTMacEdit"
+        android:layout_alignBottom="@+id/btnBTMacEdit"
+        android:layout_alignParentRight="true"
+        android:text="@string/connect" />
 
 </RelativeLayout>
