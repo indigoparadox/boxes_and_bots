@@ -32,39 +32,27 @@ int main( void ) {
 
 	__bis_SR_register( GIE );
 
-	while( uart_starting ) {
+   P1OUT |= LED1;
+
+	__delay_cycles( RESPONSE_CYCLES );
+	do {
 		P1OUT &= ~LED1;
 		__delay_cycles( RESPONSE_CYCLES );
 		P1OUT |= LED1;
-
-		uart_puts( "AT+RST\r\n" );
-
 		__delay_cycles( RESPONSE_CYCLES );
-
-		do {
-			/* Wait for reset status to finish. */
-			uart_gets( line, UART_BUFFER_LEN );
-		} while( '\0' != line[0] );
-
-		//P1OUT |= LED2;
-		__delay_cycles( RESPONSE_CYCLES );
-		//P1OUT &= ~LED2;
-		__delay_cycles( RESPONSE_CYCLES );
-
+		/* Wait for reset status to finish. */
 		uart_puts( "\r\n" );
 		__delay_cycles( RESPONSE_CYCLES );
+		uart_gets( line, UART_BUFFER_LEN );
+		if( 0 != line[0] ) {
+			P1OUT |= LED2;
+			__delay_cycles( RESPONSE_CYCLES );
+			P1OUT &= ~LED2;
+			__delay_cycles( RESPONSE_CYCLES );
 
-		do {
-			uart_gets( line, UART_BUFFER_LEN );
-
-			if( 0 == strncmp( "ERROR", line, 5 ) ) {
-				uart_starting = 0;
-				break;
-			}
-		} while( '\0' != line[0] );
-
-		__delay_cycles( RESPONSE_CYCLES );
-	}
+			//uart_puts( line );
+		}
+	} while( 0 != strncmp( "ERROR", line, 5 ) );
 
    P1OUT |= LED2;
    P1OUT &= ~LED1;

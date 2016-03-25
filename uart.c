@@ -3,7 +3,36 @@
 
 #define LED2 BIT6
 
+#define RX_BUFFER_LENGTH 30
+
+static unsigned char rx_buffer[RX_BUFFER_LENGTH];
+static char rx_buffer_index = 0;
+
+#pragma vector = USCIAB0RX_VECTOR
+__interrupt void USCI0RX_ISR( void ) {
+	//P1OUT ^= LED2;
+	int i;
+
+	rx_buffer[rx_buffer_index++] = UCA0RXBUF;
+	if( RX_BUFFER_LENGTH - 1 <= rx_buffer_index ) {
+		/* TODO: Should we wrap or discard? */
+		rx_buffer_index = 0;
+	}
+
+	IFG2 &= ~ UCA0RXIFG;
+
+#if 0
+	/* Wrap-around buffer. */
+	rx_buffer[rx_buffer_index++] = UCA0RXBUF;
+	if( RX_BUFFER_LENGTH - 1 <= rx_buffer_index ) {
+		rx_buffer_index = 0;
+	}
+#endif
+}
+
 void uart_init( void ) {
+
+	memset( rx_buffer, '\0', RX_BUFFER_LENGTH );
 
 	// The UART settings used depend on a good 1MHz clock
    BCSCTL1 = CALBC1_1MHZ;
@@ -31,16 +60,15 @@ void uart_init( void ) {
    // (4) Clear UCSWRST flag
    UCA0CTL1 &= ~UCSWRST;               // **Initialize USCI state machine**
 
-  	//IE2 |= UCA0RXIE;                          // Enable USCI_A0 RX interrupt
+  	IE2 |= UCA0RXIE;                          // Enable USCI_A0 RX interrupt
 
 	return;
 }
 
 unsigned char uart_getc( void ) {
-	unsigned short timeout = 5000;
-
-	while( (0 < timeout) && !(IFG2 & UCA0RXIFG) ) {
-		timeout--;
+#if 0
+	while( !(IFG2 & UCA0RXIFG) ) {
+		//timeout--;
 	}
 	//IFG2 &= ~ UCA0RXIFG;
 
@@ -51,6 +79,20 @@ unsigned char uart_getc( void ) {
 		/* Get was successful! */
 	   return UCA0RXBUF;
 	}
+#endif
+	int i;
+	char c_out = '\0';
+
+	/* Wait until an actual character is present. */
+	while( '\0' == rx_buffer[0] );
+
+	c_out = rx_buffer[0];
+	for( i = 0 ; RX_BUFFER_LENGTH - i > i ; i++ ) {
+		rx_buffer[i] = rx_buffer[i + 1];
+	}
+	rx_buffer_index--;
+
+	return c_out;
 }
 
 void uart_gets( char* buffer, int length ) {
@@ -58,7 +100,7 @@ void uart_gets( char* buffer, int length ) {
 
 	while( length > i ) {
 		buffer[i] = uart_getc();
-		if( '\r' == buffer[i] || '\0' == buffer[i] ) {
+		if( '\r' == buffer[i] || '\n' == buffer[i] ) {
 			for( ; length > i ; i++ ) {
 				buffer[i] = '\0';
 			}
