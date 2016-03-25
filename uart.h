@@ -3,6 +3,7 @@
 #define UART_H
 
 #include <msp430g2553.h>
+#include <string.h>
 
 #ifdef UART_LED
 #define LED BIT0

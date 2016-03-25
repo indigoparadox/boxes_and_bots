@@ -3,11 +3,7 @@
 #include <string.h>
 
 #include "uart.h"
-
-#define UART_BUFFER_LEN 50
-#define UART_WAIT_CYCLES 20
-
-#define RESPONSE_CYCLES 80000
+#include "esp8266.h"
 
 #define LED1 BIT0
 #define LED2 BIT6
@@ -15,45 +11,44 @@
 int main( void ) {
 	WDTCTL = WDTPW + WDTHOLD;
 
-	char line[UART_BUFFER_LEN];
 	unsigned short uart_starting = 1;
 	int uart_wait = 0;
+	int retval = 0;
 	long i;
 
-	memset( line, '\0', UART_BUFFER_LEN );
-
 	P1DIR |= LED1;
-   P1OUT |= LED1;
+   P1OUT &= ~LED1;
 
 	P1DIR |= LED2;
    P1OUT &= ~LED2;
+
+   P1OUT |= LED1;
 
 	uart_init();
 
 	__bis_SR_register( GIE );
 
-   P1OUT |= LED1;
+	__delay_cycles( 800000 );
 
-	__delay_cycles( RESPONSE_CYCLES );
-	do {
-		P1OUT &= ~LED1;
-		__delay_cycles( RESPONSE_CYCLES );
+	esp8266_init();
+
+#if 0
+#endif
+
+	if( !esp8266_command( "AT+CIPMUX=1" ) ) {
 		P1OUT |= LED1;
-		__delay_cycles( RESPONSE_CYCLES );
-		/* Wait for reset status to finish. */
-		uart_puts( "\r\n" );
-		__delay_cycles( RESPONSE_CYCLES );
-		uart_gets( line, UART_BUFFER_LEN );
-		if( 0 != line[0] ) {
-			P1OUT |= LED2;
-			__delay_cycles( RESPONSE_CYCLES );
-			P1OUT &= ~LED2;
-			__delay_cycles( RESPONSE_CYCLES );
-		}
-	} while( 0 != strncmp( "ERROR", line, 5 ) );
+		retval = 1;
+	}
 
-   P1OUT |= LED2;
-   P1OUT &= ~LED1;
+	if( !esp8266_command( "AT+CIPSERVER=1,8888" ) ) {
+		P1OUT |= LED1;
+		retval = 1;
+	}
+
+	if( !retval ) {
+		P1OUT &= ~LED1;
+		P1OUT |= LED2;
+	}
 
 	while( 1 ) {
 
