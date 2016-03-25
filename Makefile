@@ -18,5 +18,5 @@ flash:
 	mspdebug rf2500 "prog envsensor"
 
 clean:
-	rm -f *.o ; rm -f dep/*.o
+	rm -f *.o ; rm -f dep/*.o ; rm envsensor
 

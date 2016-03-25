@@ -1,38 +1,56 @@
 
 #include "uart.h"
 
-volatile unsigned int tx_flag;
-volatile unsigned char tx_char;
-volatile unsigned int rx_flag;
-volatile unsigned char rx_char;
+#define LED2 BIT6
 
 void uart_init( void ) {
-	P1SEL = RXD + TXD;
-	P1SEL2 = RXD + TXD;
 
-#ifdef UART_LED
-	P1DIR |= LED;
-   P1OUT |= LED;
-#endif /* UART_LED */
+	// The UART settings used depend on a good 1MHz clock
+   BCSCTL1 = CALBC1_1MHZ;
+   DCOCTL = CALDCO_1MHZ;
 
-	/* 8,000,000Hz, 9600Baud, UCBRx=52, UCBRSx=0, UCBRFx=1 */
-	UCA0CTL1 |= UCSSEL_2;
-	UCA0BR0 = 52; /* 8MHz, OSC16, 9600 */
-	UCA0BR1 = 0; /* ((8MHz/9600)/16) = 52.08333 */
-	UCA0MCTL = 0x10 | UCOS16; /* UCBRFx=1,UCBRSx=0, UCOS16=1 */
-	UCA0CTL1 &= ~UCSWRST; /* USCI state machine */
-	IE2 |= UCA0RXIE; /* Enable USCI_A0 RX interrupt */
+	__delay_cycles( 1000 );
 
-	rx_flag = 0;
-	tx_flag = 0;
+   //P1DIR &= ~BIT3;                     // P1.3 is an input pin
+   //P1IE |= BIT3;                       // Switch S2 triggers an interrupt
+   //P1IES |= BIT3;                      // on falling edge
+
+	// (1) Set state machine to the reset state
+   UCA0CTL1 = UCSWRST;
+
+   // (2) Initialize USCI registers
+   UCA0CTL1 |= UCSSEL_2;               // CLK = SMCLK
+   UCA0BR0 = 104;                      // 1MHz/9600 = 104
+   UCA0BR1 = 0x00;                     //
+   UCA0MCTL = UCBRS0;                  // Modulation UCBRSx = 1
+
+   // (3) Configure ports
+   P1SEL |= BIT1 + BIT2;                // P1.1 = RXD, P1.2=TXD
+   P1SEL2 |= BIT1 + BIT2;               // P1.1 = RXD, P1.2=TXD
+
+   // (4) Clear UCSWRST flag
+   UCA0CTL1 &= ~UCSWRST;               // **Initialize USCI state machine**
+
+  	//IE2 |= UCA0RXIE;                          // Enable USCI_A0 RX interrupt
 
 	return;
 }
 
 unsigned char uart_getc( void ) {
-	while( 0 == rx_flag );
-	rx_flag = 0;
-   return rx_char;
+	unsigned short timeout = 5000;
+
+	while( (0 < timeout) && !(IFG2 & UCA0RXIFG) ) {
+		timeout--;
+	}
+	//IFG2 &= ~ UCA0RXIFG;
+
+	if( 0 >= timeout ) {
+		/* Time out. */
+		return '\0';
+	} else {
+		/* Get was successful! */
+	   return UCA0RXBUF;
+	}
 }
 
 void uart_gets( char* buffer, int length ) {
@@ -40,7 +58,7 @@ void uart_gets( char* buffer, int length ) {
 
 	while( length > i ) {
 		buffer[i] = uart_getc();
-		if( '\r' == buffer[i] ) {
+		if( '\r' == buffer[i] || '\0' == buffer[i] ) {
 			for( ; length > i ; i++ ) {
 				buffer[i] = '\0';
 			}
@@ -53,10 +71,16 @@ void uart_gets( char* buffer, int length ) {
 }
 
 void uart_putc( const unsigned char c ) {
-	tx_char = c;
-	IE2 |= UCA0TXIE;
-	while( 1 == tx_flag );
-	tx_flag = 1;
+	while( !(IFG2 & UCA0TXIFG) );
+	UCA0TXBUF = c;
+
+#if 0
+	P1OUT |= LED2;
+	__delay_cycles( 800000 );
+	P1OUT &= ~LED2;
+	__delay_cycles( 800000 );
+#endif
+
 	return;
 }
 
