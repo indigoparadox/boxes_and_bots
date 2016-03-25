@@ -5,10 +5,6 @@
 #include <msp430g2553.h>
 #include <string.h>
 
-#ifdef UART_LED
-#define LED BIT0
-#endif /* UART_LED */
-
 #define RXD BIT1
 #define TXD BIT2
 
