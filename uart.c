@@ -3,31 +3,33 @@
 
 #define LED2 BIT6
 
-#define RX_BUFFER_LENGTH 30
+#define RX_BUFFER_LENGTH 128
 
 static unsigned char rx_buffer[RX_BUFFER_LENGTH];
-static char rx_buffer_index = 0;
+static unsigned char rx_buffer_index_start = 0;
+static unsigned char rx_buffer_index_end = 0;
 
 #pragma vector = USCIAB0RX_VECTOR
 __interrupt void USCI0RX_ISR( void ) {
-	//P1OUT ^= LED2;
 	int i;
+	unsigned char rx_in = UCA0RXBUF;
 
-	rx_buffer[rx_buffer_index++] = UCA0RXBUF;
-	if( RX_BUFFER_LENGTH - 1 <= rx_buffer_index ) {
-		/* TODO: Should we wrap or discard? */
-		rx_buffer_index = 0;
+	//while( !(IFG2 & UCA0RXIFG) );
+
+	if( '\n' == rx_in ) {
+		return;
 	}
 
-	IFG2 &= ~ UCA0RXIFG;
-
-#if 0
-	/* Wrap-around buffer. */
-	rx_buffer[rx_buffer_index++] = UCA0RXBUF;
-	if( RX_BUFFER_LENGTH - 1 <= rx_buffer_index ) {
-		rx_buffer_index = 0;
+	rx_buffer[rx_buffer_index_end++] = rx_in;
+	if( RX_BUFFER_LENGTH - 1 <= rx_buffer_index_end ) {
+		/* Circle around. */
+		rx_buffer_index_end = 0;
 	}
-#endif
+
+	if( rx_buffer_index_end + 1 == rx_buffer_index_start ) {
+		/* Overwrite old data. */
+		rx_buffer_index_start++;
+	}
 }
 
 void uart_init( void ) {
@@ -66,31 +68,18 @@ void uart_init( void ) {
 }
 
 unsigned char uart_getc( void ) {
-#if 0
-	while( !(IFG2 & UCA0RXIFG) ) {
-		//timeout--;
-	}
-	//IFG2 &= ~ UCA0RXIFG;
-
-	if( 0 >= timeout ) {
-		/* Time out. */
-		return '\0';
-	} else {
-		/* Get was successful! */
-	   return UCA0RXBUF;
-	}
-#endif
-	int i;
-	char c_out = '\0';
+	char c_out;
 
 	/* Wait until an actual character is present. */
-	while( '\0' == rx_buffer[0] );
-
-	c_out = rx_buffer[0];
-	for( i = 0 ; RX_BUFFER_LENGTH - i > i ; i++ ) {
-		rx_buffer[i] = rx_buffer[i + 1];
+	while( rx_buffer_index_start == rx_buffer_index_end ) {
+		__delay_cycles( 1000 );
 	}
-	rx_buffer_index--;
+
+	c_out = rx_buffer[rx_buffer_index_start++];
+	if( RX_BUFFER_LENGTH - 1 <= rx_buffer_index_start ) {
+		/* Wrap around. */
+		rx_buffer_index_start = 0;
+	}
 
 	return c_out;
 }
@@ -100,7 +89,7 @@ void uart_gets( char* buffer, int length ) {
 
 	while( length > i ) {
 		buffer[i] = uart_getc();
-		if( '\r' == buffer[i] || '\n' == buffer[i] ) {
+		if( '\r' == buffer[i] ) {
 			for( ; length > i ; i++ ) {
 				buffer[i] = '\0';
 			}

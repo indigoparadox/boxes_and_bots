@@ -7,7 +7,7 @@
 #define UART_BUFFER_LEN 50
 #define UART_WAIT_CYCLES 20
 
-#define RESPONSE_CYCLES 800000
+#define RESPONSE_CYCLES 80000
 
 #define LED1 BIT0
 #define LED2 BIT6
@@ -49,8 +49,6 @@ int main( void ) {
 			__delay_cycles( RESPONSE_CYCLES );
 			P1OUT &= ~LED2;
 			__delay_cycles( RESPONSE_CYCLES );
-
-			//uart_puts( line );
 		}
 	} while( 0 != strncmp( "ERROR", line, 5 ) );
 
