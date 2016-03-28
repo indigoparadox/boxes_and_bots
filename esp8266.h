@@ -3,6 +3,7 @@
 #define ESP8266_H
 
 #include <string.h>
+#include <stdlib.h>
 
 #include "uart.h"
 
@@ -11,6 +12,8 @@
 
 void esp8266_init( void );
 int esp8266_command( const char* command );
+void esp8266_start_server( void (*handler)( int, char*, int ) );
+void esp8266_stop_server( void );
 
 #endif /* ESP8266_H */
 

@@ -1,6 +1,8 @@
 
 #include "esp8266.h"
 
+#define ESP8266_NUMBER_MAX_DIGITS 4
+
 typedef enum {
 	ESP8266_STATUS_WAITING,
 	ESP8266_STATUS_READY,
@@ -10,6 +12,9 @@ typedef enum {
 
 static esp8266_status status;
 static uint8_t esp8266_wifi_up = 0;
+static void 
+	(*server_handler)( int connection_index, char* string, int length ) = NULL;
+int server_handler_index = 0;
 
 void esp8266_rx_handler_generic( unsigned char c ) {
 	char line[ESP8266_BUFFER_LEN];
@@ -26,6 +31,52 @@ void esp8266_rx_handler_generic( unsigned char c ) {
 	} else if( 0 == strncmp( "WIFI DISCO", line, 10 ) ) {
 		esp8266_wifi_up = 0;
 	}
+}
+
+void esp8266_rx_handler_server( unsigned char c ) {
+	char line[ESP8266_BUFFER_LEN];
+	char index_raw[ESP8266_NUMBER_MAX_DIGITS];
+	char line_length_raw[ESP8266_NUMBER_MAX_DIGITS];
+	uint8_t i, j;
+	uint8_t connection_index;
+
+	uart_gets( line, ESP8266_BUFFER_LEN );
+	if( 0 == strncmp( "+IPD,", line, 5 ) ) {
+		/* Get the connection index. */
+		for( i = 0 ; ESP8266_NUMBER_MAX_DIGITS > i ; i++ ) {
+			if( ',' == line[5 + i] ) {
+				index_raw[i] = '\0';
+				break;
+			}
+			index_raw[i] = line[5 + i];
+		}
+		connection_index = atoi( index_raw );
+
+		/* Get the line length. */
+		i++; /* Skip the , */
+		for( j = 0 ; ':' != line[5 + i + j] ; j++ ) {
+			line_length_raw[j] = line[5 + i + j];
+		}
+		line_length_raw[j] = '\0';
+
+		/* Don't try to handle empty requests. */
+		if( 0 >= (atoi( line_length_raw ) - 2) ) {
+			goto cleanup;
+		}
+
+		/* Launch the handler, if there is one. */
+		if( NULL != server_handler ) {
+			server_handler(
+				connection_index,
+				&line[5 + i + j + 1],
+				atoi( line_length_raw ) - 2
+			);
+		}
+	}
+
+cleanup:
+
+	return;
 }
 
 void esp8266_init( void ) {
@@ -68,5 +119,15 @@ int esp8266_command( const char* command ) {
 	uart_del_rx_handler( i );
 
 	return retval;
+}
+
+void esp8266_start_server( void (*handler)( int, char*, int ) ) {
+	server_handler = handler;
+	server_handler_index = uart_add_rx_handler( esp8266_rx_handler_server );
+}
+
+void esp8266_stop_server( void ) {
+	uart_del_rx_handler( server_handler_index );
+	server_handler = NULL;
 }
 

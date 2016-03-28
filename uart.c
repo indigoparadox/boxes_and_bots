@@ -130,6 +130,15 @@ void uart_puts( const char *str ) {
    return;
 }
 
+void uart_nputs( const char *str, int length ) {
+	int i;
+   while( '\0' != *str && i < length ) {
+ 		uart_putc( *str++ );
+		i++;
+	}
+   return;
+}
+
 int8_t uart_add_rx_handler( void (*handler)( unsigned char c ) ) {
 	int8_t retval = 0;
 	

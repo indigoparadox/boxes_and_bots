@@ -8,6 +8,10 @@
 #define LED1 BIT0
 #define LED2 BIT6
 
+void sensor_handler( int connection_index, char* string, int length ) {
+	/* TODO */
+}
+
 int main( void ) {
 	WDTCTL = WDTPW + WDTHOLD;
 
@@ -42,6 +46,8 @@ int main( void ) {
 		P1OUT &= ~LED1;
 		P1OUT |= LED2;
 	}
+
+	esp8266_start_server( sensor_handler );
 
 	while( 1 ) {
 		__bis_SR_register( GIE | LPM3_bits );

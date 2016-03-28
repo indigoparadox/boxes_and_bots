@@ -15,6 +15,7 @@ unsigned char uart_getc( void );
 void uart_gets( char* buffer, int length );
 void uart_putc( const unsigned char c );
 void uart_puts( const char *str );
+void uart_nputs( const char *str, int length );
 int8_t uart_add_rx_handler( void (*handler)( unsigned char c ) );
 void uart_del_rx_handler( int8_t index );
 
