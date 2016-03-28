@@ -20,8 +20,6 @@ int main( void ) {
 	P1DIR |= LED2;
    P1OUT &= ~LED2;
 
-   P1OUT |= LED1;
-
 	uart_init();
 
 	__bis_SR_register( GIE );
@@ -30,12 +28,12 @@ int main( void ) {
 
 	esp8266_init();
 
-	if( !esp8266_command( "AT+CIPMUX=1" ) ) {
+	if( esp8266_command( "AT+CIPMUX=1" ) ) {
 		P1OUT |= LED1;
 		retval = 1;
 	}
 
-	if( !esp8266_command( "AT+CIPSERVER=1,8888" ) ) {
+	if( esp8266_command( "AT+CIPSERVER=1,8888" ) ) {
 		P1OUT |= LED1;
 		retval = 1;
 	}
