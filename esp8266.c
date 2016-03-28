@@ -131,3 +131,46 @@ void esp8266_stop_server( void ) {
 	server_handler = NULL;
 }
 
+void esp8266_send( int connection, char* string, int length ) {
+	char length_str[ESP8266_NUMBER_MAX_DIGITS];
+	char conn_str[ESP8266_NUMBER_MAX_DIGITS];
+	int i;
+
+	uart_itoa( length, length_str, 10 );
+	uart_itoa( connection, conn_str, 10 );
+
+	/* Prepare to send. */
+#if 0
+	status = ESP8266_STATUS_WAITING;
+	i = uart_add_rx_handler( esp8266_rx_handler_generic );
+#endif
+
+	/* Start sending. */
+	uart_puts( "AT+CIPSEND=" );
+	uart_puts( conn_str );
+	uart_putc( ',' );
+	uart_puts( length_str );
+	__delay_cycles( ESP8266_RESPONSE_CYCLES * 4 );
+
+	/* TODO: Implement a queue so we don't send from inside interrupts. */
+#if 0
+	/* Wait for it to be clear to send. */
+	do {
+		__delay_cycles( ESP8266_RESPONSE_CYCLES );
+		if( ESP8266_STATUS_ERROR == status ) {
+			goto cleanup;
+		} else if( ESP8266_STATUS_OK == status ) {
+			break;
+		}
+	} while( ESP8266_STATUS_WAITING == status );
+	P1OUT |= BIT1;
+	uart_del_rx_handler( i );
+#endif
+
+	uart_puts( string );
+
+cleanup:
+
+	return;
+}
+

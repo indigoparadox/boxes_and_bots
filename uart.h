@@ -18,6 +18,7 @@ void uart_puts( const char *str );
 void uart_nputs( const char *str, int length );
 int8_t uart_add_rx_handler( void (*handler)( unsigned char c ) );
 void uart_del_rx_handler( int8_t index );
+void uart_itoa( long unsigned int value, char* result, int base );
 
 #endif /* UART_H */
 

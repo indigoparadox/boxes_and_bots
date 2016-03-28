@@ -10,6 +10,7 @@
 
 void sensor_handler( int connection_index, char* string, int length ) {
 	/* TODO */
+	esp8266_send( connection_index, string, length );
 }
 
 int main( void ) {

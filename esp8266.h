@@ -14,6 +14,7 @@ void esp8266_init( void );
 int esp8266_command( const char* command );
 void esp8266_start_server( void (*handler)( int, char*, int ) );
 void esp8266_stop_server( void );
+void esp8266_send( int connection, char* string, int length );
 
 #endif /* ESP8266_H */
 

@@ -177,3 +177,37 @@ cleanup:
 	return;
 }
 
+void uart_itoa( long unsigned int value, char* result, int base ) {
+	char* ptr = result,
+		* ptr1 = result,
+		tmp_char;
+	int tmp_value;
+
+	/* Ensure base sanity. */
+	if( 2 > base || 36 < base ) {
+		*result = '\0';
+		goto cleanup;
+	}
+
+	do {
+		tmp_value = value;
+		value /= base;
+		*ptr++ = "zyxwvutsrqponmlkjihgfedcba9876543210123456789abcdefghijklmnopqrstuvwxyz" [35 + (tmp_value - value * base)];
+	} while( value );
+
+	/* Apply negative sign. */
+	if( 0 > tmp_value ) {
+		*ptr++ = '-';
+	}
+	*ptr-- = '\0';
+	while( ptr1 < ptr ) {
+		tmp_char = *ptr;
+		*ptr-- = *ptr1;
+		*ptr1++ = tmp_char;
+	}
+
+cleanup:
+	
+	return;
+}
+
