@@ -2,6 +2,7 @@
 #include "uart.h"
 
 #define RX_BUFFER_LENGTH 20
+#define TX_BUFFER_LENGTH 20
 
 #define HANDLERS_COUNT_MAX 6
 
@@ -11,6 +12,12 @@
 static uint8_t rx_buffer[RX_BUFFER_LENGTH];
 static uint8_t rx_buffer_index_start = 0;
 static uint8_t rx_buffer_index_end = 0;
+
+#ifdef UART_BUFFER_TX
+static uint8_t tx_buffer[TX_BUFFER_LENGTH];
+static uint8_t tx_buffer_index_start = 0;
+static uint8_t tx_buffer_index_end = 0;
+#endif /* UART_BUFFER_TX */
 
 static void (*rx_handlers[HANDLERS_COUNT_MAX])( unsigned char c );
 static uint8_t rx_handlers_count = 0;
@@ -46,22 +53,38 @@ __interrupt void USCI0RX_ISR( void ) {
 			rx_handlers[i]( rx_in );
 		}
 	}
+
+	__bic_SR_register_on_exit( LPM0_bits );
 }
+
+#ifdef UART_BUFFER_TX
+#pragma vector = USCIAB0TX_VECTOR
+__interrupt void USCI0TX_ISR( void ) {
+	if( rx_buffer_index_start == rx_buffer_index_end ) {
+		return;
+	}
+
+	UCA0TXBUF = tx_buffer[tx_buffer_index_end++];
+	if( TX_BUFFER_LENGTH - 1 <= tx_buffer_index_start ) {
+		/* Wrap around. */
+		tx_buffer_index_start = 0;
+	}
+}
+#endif /* UART_BUFFER_TX */
 
 #pragma vector = WDT_VECTOR
 __interrupt void watchdog_timer( void ) {
 	uint8_t i;
-	static uint8_t counter = 0;
 
-	if( UART_COUNTER_MAX < counter ) {
-		counter = 0;
+	if( UART_COUNTER_MAX < wdt_counter ) {
+		wdt_counter = 0;
 	} else {
-		counter++;
+		wdt_counter++;
 	}
 
 	/* Run registered handlers. */
 	for( i = 0 ; wdt_handlers_count > i ; i++ ) {
-		wdt_handlers[i]( counter );
+		wdt_handlers[i]( wdt_counter );
 	}
 }
 
@@ -101,6 +124,10 @@ void uart_init( void ) {
 	IE1 |= WDTIE;
 
   	IE2 |= UCA0RXIE;                    /* Enable USCI_A0 RX interrupt. */
+
+#ifdef UART_BUFFER_TX
+	IE2 |= UCA0TXIE;
+#endif /* UART_BUFFER_TX */
 
 	return;
 }
@@ -146,10 +173,22 @@ void uart_gets( char* buffer, int length, uint8_t block ) {
 }
 
 void uart_putc( const unsigned char c ) {
-	/* TODO: Use a ring buffer and interrupts for TX, too. */
-	while( !(IFG2 & UCA0TXIFG) );
 	UCA0TXBUF = c;
-	return;
+#ifdef UART_BUFFER_TX
+	tx_buffer[tx_buffer_index_end++] = c;
+	if( RX_BUFFER_LENGTH - 1 <= tx_buffer_index_end ) {
+		/* Circle around. */
+		tx_buffer_index_end = 0;
+	}
+
+	if( tx_buffer_index_end + 1 == tx_buffer_index_start ) {
+		/* Overwrite old data. */
+		tx_buffer_index_start++;
+	}
+#else
+	while( !(IFG2 & UCA0TXIFG) );
+  	UCA0TXBUF = c;
+#endif /* UART_BUFFER_TX */
 }
 
 void uart_puts( const char *str ) {
@@ -243,40 +282,4 @@ cleanup:
 
 	return;
 }
-
-#if 0
-void uart_itoa( long unsigned int value, char* result, int base ) {
-	char* ptr = result,
-		* ptr1 = result,
-		tmp_char;
-	int tmp_value;
-
-	/* Ensure base sanity. */
-	if( 2 > base || 36 < base ) {
-		*result = '\0';
-		goto cleanup;
-	}
-
-	do {
-		tmp_value = value;
-		value /= base;
-		*ptr++ = "zyxwvutsrqponmlkjihgfedcba9876543210123456789abcdefghijklmnopqrstuvwxyz" [35 + (tmp_value - value * base)];
-	} while( value );
-
-	/* Apply negative sign. */
-	if( 0 > tmp_value ) {
-		*ptr++ = '-';
-	}
-	*ptr-- = '\0';
-	while( ptr1 < ptr ) {
-		tmp_char = *ptr;
-		*ptr-- = *ptr1;
-		*ptr1++ = tmp_char;
-	}
-
-cleanup:
-	
-	return;
-}
-#endif
 

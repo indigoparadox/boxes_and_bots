@@ -1,7 +1,7 @@
 
 DEPS=envsensor.o uart.o esp8266.o
 
-CFLAGS=-mmcu=msp430g2553
+CFLAGS=-mmcu=msp430g2553 -Wall
 CC=msp430-gcc
 
 all: envsensor

@@ -6,39 +6,32 @@
 static void 
 	(*server_handler)( const char* connection_index, const char* string, const char* length ) = NULL;
 int server_handler_index = 0;
-//struct esp8266_response responses[ESP8266_RESPONSES_MAX];
 char recieves[ESP8266_RESPONSES_MAX][ESP8266_BUFFER_LEN];
-int responses_start = 0;
-int responses_end = 0;
+int recieves_start = 0;
+int recieves_end = 0;
 
 static const char* str_error = "ERROR";
 static const char* str_ok = "OK";
 
 void esp8266_rx_handler_server( unsigned char c ) {
 	char line[ESP8266_BUFFER_LEN];
-	struct esp8266_response* response_iter;
-	int line_length;
 
 	uart_gets( line, ESP8266_BUFFER_LEN, TRUE );
 
 	if( 0 == strncmp( "+IPD,", line, 5 ) ) {
 
-		strncpy( recieves[responses_end++], line, ESP8266_BUFFER_LEN );
+		strncpy( recieves[recieves_end++], line, ESP8266_BUFFER_LEN );
 
-		if( ESP8266_RESPONSES_MAX - 1 <= responses_end ) {
+		if( ESP8266_RESPONSES_MAX - 1 <= recieves_end ) {
 			/* Circle around. */
-			responses_end = 0;
+			recieves_end = 0;
 		}
 
-		if( responses_end + 1 == responses_start ) {
+		if( recieves_end + 1 == recieves_start ) {
 			/* Overwrite old data. */
-			responses_start++;
+			recieves_start++;
 		}
 	}
-
-cleanup:
-
-	return;
 }
 
 void esp8266_handle_response_step( void ) {
@@ -46,18 +39,17 @@ void esp8266_handle_response_step( void ) {
 	char line_length_raw[ESP8266_NUMBER_MAX_DIGITS];
 	char* line_iter;
 	char* char_iter;
-	int connection;
 	int line_length;
 	uint8_t i;
 
-	if( responses_start == responses_end ) {
+	if( recieves_start == recieves_end ) {
 		return;
 	}
 
-	line_iter = recieves[responses_start++];
-	if( ESP8266_RESPONSES_MAX - 1 <= responses_start ) {
+	line_iter = recieves[recieves_start++];
+	if( ESP8266_RESPONSES_MAX - 1 <= recieves_start ) {
 		/* Wrap around. */
-		responses_start = 0;
+		recieves_start = 0;
 	}
 
 	char_iter = line_iter;
@@ -73,7 +65,6 @@ void esp8266_handle_response_step( void ) {
 	}
 	char_iter++; /* Skip the , */
 	connection_raw[i] = '\0';
-	connection = atoi( connection_raw );
 
 	/* Get the line length. */
 	i = 0;
@@ -82,7 +73,7 @@ void esp8266_handle_response_step( void ) {
 		i++;
 		char_iter++;
 	}
-	i++; /* Skip the : */
+	char_iter++; /* Skip the : */
 	line_length_raw[i] = '\0';
 	line_length = atoi( line_length_raw ) - 2;
 
@@ -90,6 +81,9 @@ void esp8266_handle_response_step( void ) {
 	if( 0 >= line_length ) {
 		goto cleanup;
 	}
+
+	memset( line_length_raw, '\0', ESP8266_NUMBER_MAX_DIGITS );
+	itoa( line_length, line_length_raw, 10 );
 
 	/* Don't try to handle overflowing requests. */
 	if( ESP8266_BUFFER_LEN <= line_length ) {
@@ -120,6 +114,7 @@ uint8_t esp8266_init( const char* server_port ) {
 	uart_puts( "\r\n" );
 	uart_puts( "AT+RST\r\n" );
 	do {
+		__bis_SR_register( GIE + LPM0_bits );
 		uart_gets( line, ESP8266_BUFFER_LEN, TRUE );
 	} while( 0 != strncmp( "WIFI GOT IP", line, 11 ) );
 
@@ -154,6 +149,7 @@ uint8_t esp8266_command( const char* command, const char* args ) {
 	}
 	uart_puts( "\r\n" );
 	do {
+		__bis_SR_register( GIE + LPM0_bits );
 		uart_gets( line, ESP8266_BUFFER_LEN, TRUE );
 		if( 0 == strncmp( str_error, line, 5 ) ) {
 			retval = 1;
@@ -174,18 +170,7 @@ void esp8266_stop_server( void ) {
 	server_handler = NULL;
 }
 
-uint8_t esp8266_send( const char* connection, const char* string, const char* length ) {
-	//char length_str[ESP8266_NUMBER_MAX_DIGITS];
-	//char conn_str[ESP8266_NUMBER_MAX_DIGITS];
-	int i;
-	uint8_t retval = 0;
-	//char line[ESP8266_BUFFER_LEN];
-
-	//memset( length_str, '\0', ESP8266_NUMBER_MAX_DIGITS );
-	//memset( length_str, '\0', ESP8266_NUMBER_MAX_DIGITS );
-
-	//itoa( length, length_str, 10 );
-	//itoa( connection, conn_str, 10 );
+void esp8266_send( const char* connection, const char* string, const char* length ) {
 	
 	/* Start sending. */
 	uart_puts( "AT+CIPSEND=" );
@@ -195,22 +180,20 @@ uint8_t esp8266_send( const char* connection, const char* string, const char* le
 	uart_puts( "\r\n" );
 
 	/* Wait for it to be clear to send. */
-#if 0
-	do {
-		uart_gets( line, ESP8266_BUFFER_LEN, TRUE );
-		if( 0 == strncmp( str_error, line, 5 ) ) {
-			retval = 1;
-			goto cleanup;
-		}
-	} while( 0 != strncmp( str_ok, line, 2 ) );
-#endif
-
-	__delay_cycles( ESP8266_RESPONSE_CYCLES );
+	__bis_SR_register( GIE + LPM0_bits );
 
 	uart_puts( string );
 
-cleanup:
-
 	return;
+}
+
+BOOL esp8266_server_waiting( void ) {
+	BOOL retval = FALSE;
+
+	if( recieves_start != recieves_end ) {
+		retval = TRUE;
+	}
+
+	return retval;
 }
 

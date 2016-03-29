@@ -16,9 +16,6 @@ void sensor_handler( const char* connection_index, const char* string, const cha
 int main( void ) {
 	WDTCTL = WDTPW + WDTHOLD;
 
-	int retval = 0;
-	long i;
-
 	/* Enable the LEDs. */
 	P1DIR |= LED1;
    P1OUT &= ~LED1;
@@ -38,12 +35,10 @@ int main( void ) {
 	esp8266_start_server( sensor_handler );
 
 	while( TRUE ) {
-		//__bis_SR_register( GIE + LPM0_bits );
-		__delay_cycles( ESP8266_RESPONSE_CYCLES );
-		__delay_cycles( ESP8266_RESPONSE_CYCLES );
-		__delay_cycles( ESP8266_RESPONSE_CYCLES );
-		__delay_cycles( ESP8266_RESPONSE_CYCLES );
-		uart_nputs( "mfoo\r\n", 6 );
+		if( !esp8266_server_waiting() ) {
+			__bis_SR_register( GIE + LPM0_bits );
+		}
+		//uart_nputs( "mfoo\r\n", 6 );
 		esp8266_handle_response_step();
 	}
 
