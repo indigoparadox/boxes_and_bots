@@ -142,7 +142,7 @@ unsigned char uart_getc( uint8_t block ) {
 	if( block ) {
 		/* Wait until an actual character is present. */
 		while( rx_buffer_index_start == rx_buffer_index_end ) {
-			__delay_cycles( 1000 );
+			__bis_SR_register( GIE + LPM0_bits );
 		}
 	}
 

@@ -110,7 +110,6 @@ uint8_t esp8266_init( const char* server_port ) {
 	memset( line, '\0', ESP8266_BUFFER_LEN );
 
 	/* Try to get a prompt. */
-	__delay_cycles( ESP8266_RESPONSE_CYCLES );
 	uart_puts( "\r\n" );
 	uart_puts( "AT+RST\r\n" );
 	do {
