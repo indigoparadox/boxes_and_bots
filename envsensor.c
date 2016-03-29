@@ -44,14 +44,15 @@ int main( void ) {
 	}
 
 	if( !retval ) {
-		P1OUT &= ~LED1;
 		P1OUT |= LED2;
 	}
 
 	esp8266_start_server( sensor_handler );
 
 	while( 1 ) {
-		__bis_SR_register( GIE | LPM3_bits );
+		//__bis_SR_register( GIE | LPM3_bits );
+		__delay_cycles( 80000 );
+		esp8266_handle_responses();
 	}
 
 	return 0;

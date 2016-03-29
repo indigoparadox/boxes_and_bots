@@ -1,17 +1,23 @@
 
 #include "uart.h"
 
-#define RX_BUFFER_LENGTH 256
+#define RX_BUFFER_LENGTH 20
 
-#define RX_HANDLERS_COUNT_MAX 6
+#define HANDLERS_COUNT_MAX 6
+
+#define UART_COUNTER_MAX 100
 
 /* Ring buffer to hold recieved characters. */
 static uint8_t rx_buffer[RX_BUFFER_LENGTH];
 static uint8_t rx_buffer_index_start = 0;
 static uint8_t rx_buffer_index_end = 0;
 
-static void (*rx_handlers[RX_HANDLERS_COUNT_MAX])( unsigned char c );
+static void (*rx_handlers[HANDLERS_COUNT_MAX])( unsigned char c );
 static uint8_t rx_handlers_count = 0;
+
+static void (*wdt_handlers[HANDLERS_COUNT_MAX])( uint8_t );
+static uint8_t wdt_handlers_count = 0;
+static uint8_t wdt_counter = 0;
 
 #pragma vector = USCIAB0RX_VECTOR
 __interrupt void USCI0RX_ISR( void ) {
@@ -42,12 +48,29 @@ __interrupt void USCI0RX_ISR( void ) {
 	}
 }
 
+#pragma vector = WDT_VECTOR
+__interrupt void watchdog_timer( void ) {
+	uint8_t i;
+	static uint8_t counter = 0;
+
+	if( UART_COUNTER_MAX < counter ) {
+		counter = 0;
+	} else {
+		counter++;
+	}
+
+	/* Run registered handlers. */
+	for( i = 0 ; wdt_handlers_count > i ; i++ ) {
+		wdt_handlers[i]( counter );
+	}
+}
+
 void uart_init( void ) {
 	uint8_t i;
 
 	/* Zero out our buffers for sanity. */
 	memset( rx_buffer, '\0', RX_BUFFER_LENGTH );
-	for( i = 0 ; RX_HANDLERS_COUNT_MAX > i ; i++ ) {
+	for( i = 0 ; HANDLERS_COUNT_MAX > i ; i++ ) {
 		rx_handlers[i] = NULL;
 	}
 
@@ -72,6 +95,10 @@ void uart_init( void ) {
 
    /* (4) Clear UCSWRST flag. */
    UCA0CTL1 &= ~UCSWRST;               /* Initialize USCI state machine. */
+
+	/* Enable watchdog timer. */
+	WDTCTL = WDT_MDLY_32;
+	IE1 |= WDTIE;
 
   	IE2 |= UCA0RXIE;                    /* Enable USCI_A0 RX interrupt. */
 
@@ -142,7 +169,7 @@ void uart_nputs( const char *str, int length ) {
 int8_t uart_add_rx_handler( void (*handler)( unsigned char c ) ) {
 	int8_t retval = 0;
 	
-	if( rx_handlers_count + 1 >= RX_HANDLERS_COUNT_MAX ) {
+	if( rx_handlers_count + 1 >= HANDLERS_COUNT_MAX ) {
 		retval = -1;
 		goto cleanup;
 	}
@@ -171,6 +198,44 @@ void uart_del_rx_handler( int8_t index ) {
 	}
 
 	rx_handlers_count--;
+
+cleanup:
+
+	return;
+}
+
+int8_t uart_add_wdt_handler( void (*handler)( uint8_t counter ) ) {
+	int8_t retval = 0;
+	
+	if( wdt_handlers_count + 1 >= HANDLERS_COUNT_MAX ) {
+		retval = -1;
+		goto cleanup;
+	}
+
+	wdt_handlers[wdt_handlers_count] = handler;
+	retval = wdt_handlers_count;
+	wdt_handlers_count++;
+
+cleanup:
+
+	return retval;
+}
+
+void uart_del_wdt_handler( int8_t index ) {
+	int8_t i;
+
+	if( 0 > index || index >= wdt_handlers_count ) {
+		goto cleanup;
+	}
+
+	/* Clear this handler and pull the subsequent ones down to it. */
+	wdt_handlers[0] = NULL;
+	for( i = index ; i < wdt_handlers_count - 2 ; i++ ) {
+		wdt_handlers[i] = wdt_handlers[i + 1];
+		wdt_handlers[i + 1] = NULL;
+	}
+
+	wdt_handlers_count--;
 
 cleanup:
 
