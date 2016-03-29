@@ -109,12 +109,14 @@ void uart_clear( void ) {
 	rx_buffer_index_start = rx_buffer_index_end;
 }
 
-unsigned char uart_getc( void ) {
+unsigned char uart_getc( uint8_t block ) {
 	char c_out;
 
-	/* Wait until an actual character is present. */
-	while( rx_buffer_index_start == rx_buffer_index_end ) {
-		__delay_cycles( 1000 );
+	if( block ) {
+		/* Wait until an actual character is present. */
+		while( rx_buffer_index_start == rx_buffer_index_end ) {
+			__delay_cycles( 1000 );
+		}
 	}
 
 	c_out = rx_buffer[rx_buffer_index_start++];
@@ -126,11 +128,11 @@ unsigned char uart_getc( void ) {
 	return c_out;
 }
 
-void uart_gets( char* buffer, int length ) {
+void uart_gets( char* buffer, int length, uint8_t block ) {
 	unsigned int i = 0;
 
 	while( length > i ) {
-		buffer[i] = uart_getc();
+		buffer[i] = uart_getc( block );
 		if( '\r' == buffer[i] ) {
 			for( ; length > i ; i++ ) {
 				buffer[i] = '\0';

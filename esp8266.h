@@ -18,9 +18,9 @@ struct esp8266_response {
 	char text[ESP8266_BUFFER_LEN];
 };
 
-void esp8266_init( void );
+uint8_t esp8266_init( const char* server_port );
 void esp8266_handle_responses( void );
-uint8_t esp8266_command( const char* command );
+uint8_t esp8266_command( const char* command, const char* args );
 void esp8266_start_server( void (*handler)( int, char*, int ) );
 void esp8266_stop_server( void );
 uint8_t esp8266_send( int connection, char* string, int length );

@@ -21,7 +21,7 @@ void esp8266_rx_handler_server( unsigned char c ) {
 	uint8_t connection_index;
 	struct esp8266_response* response_iter;
 
-	uart_gets( line, ESP8266_BUFFER_LEN );
+	uart_gets( line, ESP8266_BUFFER_LEN, TRUE );
 	if( 0 == strncmp( "+IPD,", line, 5 ) ) {
 		/* Get the connection index. */
 		for( i = 0 ; ESP8266_NUMBER_MAX_DIGITS > i ; i++ ) {
@@ -95,8 +95,9 @@ void esp8266_handle_responses( void ) {
 	}
 }
 
-void esp8266_init( void ) {
+uint8_t esp8266_init( const char* server_port ) {
 	char line[ESP8266_BUFFER_LEN];
+	uint8_t retval = 0;
 
 	memset( line, '\0', ESP8266_BUFFER_LEN );
 
@@ -105,11 +106,27 @@ void esp8266_init( void ) {
 	uart_puts( "\r\n" );
 	uart_puts( "AT+RST\r\n" );
 	do {
-		uart_gets( line, ESP8266_BUFFER_LEN );
+		uart_gets( line, ESP8266_BUFFER_LEN, TRUE );
 	} while( 0 != strncmp( "WIFI GOT IP", line, 11 ) );
+
+	if( NULL != server_port ) {
+		if( esp8266_command( "AT+CIPMUX=1", NULL ) ) {
+			retval = 1;
+			goto cleanup;
+		}
+
+		if( esp8266_command( "AT+CIPSERVER=1,", server_port ) ) {
+			retval = 1;
+			goto cleanup;
+		}
+	}
+
+cleanup:
+
+	return retval;
 }
 
-uint8_t esp8266_command( const char* command ) {
+uint8_t esp8266_command( const char* command, const char* args ) {
 	char line[ESP8266_BUFFER_LEN];
 	uint8_t retval = 0;
 
@@ -118,9 +135,12 @@ uint8_t esp8266_command( const char* command ) {
 	/* Send the command and wait for a response. */
 	uart_clear();
 	uart_puts( command );
+	if( NULL != args ) {
+		uart_puts( args );
+	}
 	uart_puts( "\r\n" );
 	do {
-		uart_gets( line, ESP8266_BUFFER_LEN );
+		uart_gets( line, ESP8266_BUFFER_LEN, TRUE );
 		if( 0 == strncmp( str_error, line, 5 ) ) {
 			retval = 1;
 			break;
@@ -158,7 +178,7 @@ uint8_t esp8266_send( int connection, char* string, int length ) {
 
 	/* Wait for it to be clear to send. */
 	do {
-		uart_gets( line, ESP8266_BUFFER_LEN );
+		uart_gets( line, ESP8266_BUFFER_LEN, TRUE );
 		if( 0 == strncmp( str_error, line, 5 ) ) {
 			retval = 1;
 			goto cleanup;

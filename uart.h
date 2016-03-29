@@ -6,13 +6,25 @@
 #include <string.h>
 #include <stdint.h>
 
+#ifndef BOOL
+typedef uint8_t BOOL;
+#endif
+
+#ifndef TRUE
+#define TRUE 1
+#endif
+
+#ifndef FALSE
+#define FALSE 0
+#endif
+
 #define RXD BIT1
 #define TXD BIT2
 
 void uart_init( void );
 void uart_clear( void );
-unsigned char uart_getc( void );
-void uart_gets( char* buffer, int length );
+unsigned char uart_getc( uint8_t block );
+void uart_gets( char* buffer, int length, uint8_t block );
 void uart_putc( const unsigned char c );
 void uart_puts( const char *str );
 void uart_nputs( const char *str, int length );

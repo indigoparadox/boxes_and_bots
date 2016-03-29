@@ -31,27 +31,15 @@ int main( void ) {
 
 	__delay_cycles( 800000 );
 
-	esp8266_init();
-
-	if( esp8266_command( "AT+CIPMUX=1" ) ) {
-		P1OUT |= LED1;
-		retval = 1;
-	}
-
-	if( esp8266_command( "AT+CIPSERVER=1,8888" ) ) {
-		P1OUT |= LED1;
-		retval = 1;
-	}
-
-	if( !retval ) {
+	if( !esp8266_init( "8888" ) ) {
 		P1OUT |= LED2;
 	}
 
 	esp8266_start_server( sensor_handler );
 
 	while( 1 ) {
-		//__bis_SR_register( GIE | LPM3_bits );
-		__delay_cycles( 80000 );
+		//__bis_SR_register( GIE + LPM0_bits );
+		__delay_cycles( ESP8266_RESPONSE_CYCLES );
 		esp8266_handle_responses();
 	}
 
