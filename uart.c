@@ -153,17 +153,17 @@ void uart_putc( const unsigned char c ) {
 }
 
 void uart_puts( const char *str ) {
-   while( '\0' != *str ) {
- 		uart_putc( *str++ );
+	int i = 0;
+   while( '\0' != str[i] ) {
+ 		uart_putc( str[i++] );
 	}
    return;
 }
 
 void uart_nputs( const char *str, int length ) {
 	int i;
-   while( '\0' != *str && i < length ) {
- 		uart_putc( *str++ );
-		i++;
+   while( '\0' != str[i] && i < length ) {
+ 		uart_putc( str[i++] );
 	}
    return;
 }
@@ -244,6 +244,7 @@ cleanup:
 	return;
 }
 
+#if 0
 void uart_itoa( long unsigned int value, char* result, int base ) {
 	char* ptr = result,
 		* ptr1 = result,
@@ -277,4 +278,5 @@ cleanup:
 	
 	return;
 }
+#endif
 

@@ -12,18 +12,12 @@
 #define ESP8266_BUFFER_LEN 20
 #define ESP8266_RESPONSES_MAX 3
 
-struct esp8266_response {
-	int connection;
-	int length;
-	char text[ESP8266_BUFFER_LEN];
-};
-
 uint8_t esp8266_init( const char* server_port );
-void esp8266_handle_responses( void );
+void esp8266_handle_response_step( void );
 uint8_t esp8266_command( const char* command, const char* args );
-void esp8266_start_server( void (*handler)( int, char*, int ) );
+void esp8266_start_server( void (*handler)( const char*, const char*, const char* ) );
 void esp8266_stop_server( void );
-uint8_t esp8266_send( int connection, char* string, int length );
+uint8_t esp8266_send( const char* connection, const char* string, const char* length );
 
 #endif /* ESP8266_H */
 

@@ -8,7 +8,7 @@
 #define LED1 BIT0
 #define LED2 BIT6
 
-void sensor_handler( int connection_index, char* string, int length ) {
+void sensor_handler( const char* connection_index, const char* string, const char* length ) {
 	/* TODO */
 	esp8266_send( connection_index, string, length );
 }
@@ -37,10 +37,14 @@ int main( void ) {
 
 	esp8266_start_server( sensor_handler );
 
-	while( 1 ) {
+	while( TRUE ) {
 		//__bis_SR_register( GIE + LPM0_bits );
 		__delay_cycles( ESP8266_RESPONSE_CYCLES );
-		esp8266_handle_responses();
+		__delay_cycles( ESP8266_RESPONSE_CYCLES );
+		__delay_cycles( ESP8266_RESPONSE_CYCLES );
+		__delay_cycles( ESP8266_RESPONSE_CYCLES );
+		uart_nputs( "mfoo\r\n", 6 );
+		esp8266_handle_response_step();
 	}
 
 	return 0;
