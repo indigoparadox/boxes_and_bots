@@ -17,7 +17,7 @@ void esp8266_handle_response_step( void );
 uint8_t esp8266_command( const char* command, const char* args );
 void esp8266_start_server( void (*handler)( const char*, const char*, const char* ) );
 void esp8266_stop_server( void );
-void esp8266_send( const char* connection, const char* string, const char* length );
+void esp8266_send( const char* connection, const char* string, const char* length, BOOL newline );
 BOOL esp8266_server_waiting( void );
 
 #endif /* ESP8266_H */

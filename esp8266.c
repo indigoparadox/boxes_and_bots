@@ -169,7 +169,12 @@ void esp8266_stop_server( void ) {
 	server_handler = NULL;
 }
 
-void esp8266_send( const char* connection, const char* string, const char* length ) {
+void esp8266_send(
+	const char* connection,
+	const char* string,
+	const char* length,
+	BOOL newline
+) {
 	
 	/* Start sending. */
 	uart_puts( "AT+CIPSEND=" );
@@ -182,6 +187,16 @@ void esp8266_send( const char* connection, const char* string, const char* lengt
 	__bis_SR_register( GIE + LPM0_bits );
 
 	uart_puts( string );
+
+	if( newline ) {
+		uart_puts( "AT+CIPSEND=" );
+		uart_puts( connection );
+		uart_puts( ",2\r\n" );
+
+		__bis_SR_register( GIE + LPM0_bits );
+
+		uart_puts( "\r\n" );
+	}
 
 	return;
 }
