@@ -53,19 +53,19 @@ class SGP30:
     def initialise_indoor_air_quality(self):
         """Initialize the IAQ algorithm"""
         # name, command, signals, delay
-        self._run_profile([[0x20, 0x03], 0, 0.01])
+        self._run_profile(command=[0x20, 0x03], signals=0, delay=0.01)
 
     @property
     def indoor_air_quality(self):
         """Measure the CO2eq and TVOC"""
         # name, command, signals, delay
-        return self._run_profile([[0x20, 0x08], 2, 0.05])
+        return self._run_profile(command=[0x20, 0x08], signals=2, delay=0.05)
 
     @property
     def indoor_air_quality_baseline(self):
         """Get the IAQ algorithm baseline for CO2eq and TVOC"""
         # name, command, signals, delay
-        return self._run_profile([[0x20, 0x15], 2, 0.01])
+        return self._run_profile(command=[0x20, 0x15], signals=2, delay=0.01)
 
     def set_indoor_air_quality_baseline(self,
                                         co2_equivalent,
@@ -78,12 +78,11 @@ class SGP30:
             arr = [value >> 8, value & 0xFF]
             arr.append(generate_crc(arr))
             buffer += arr
-        self._run_profile([[0x20, 0x1e] + buffer, 0, 0.01])
+        self._run_profile(command=[0x20, 0x1e] + buffer, signals=0, delay=0.01)
 
     # Low level command functions
-    def _run_profile(self, profile):
+    def _run_profile(self, command, signals, delay):
         """Run an SGP 'profile' which is a named command set"""
-        command, signals, delay = profile
         return self._i2c_read_words_from_cmd(command, delay, signals)
 
     def _i2c_read_words_from_cmd(self, command, delay, reply_size):
