@@ -12,7 +12,7 @@ _SGP30_CRC8_INIT = const(0xFF)
 _SGP30_WORD_LEN = const(2)
 
 
-class Adafruit_SGP30:
+class SGP30:
     """
     A driver for the SGP30 gas sensor.
 
@@ -31,7 +31,7 @@ class Adafruit_SGP30:
         featureset = self._i2c_read_words_from_cmd([0x20, 0x2f], 0.01, 1)
         if featureset[0] != _SGP30_FEATURESET:
             raise RuntimeError('SGP30 Not detected')
-        self.iaq_init()
+        self.initalise_indoor_air_quality()
 
     @property
     def tvoc(self):
@@ -49,14 +49,14 @@ class Adafruit_SGP30:
         return self.iaq_measure()[0]
 
     @property
-    def baseline_co2eq(self):
+    def baseline_co2_equivilant(self):
         """Carbon Dioxide Equivalent baseline value"""
         return self.get_iaq_baseline()[0]
 
-    def iaq_init(self):
+    def initalise_indoor_air_quality(self):
         """Initialize the IAQ algorithm"""
         # name, command, signals, delay
-        self._run_profile(["iaq_init", [0x20, 0x03], 0, 0.01])
+        self._run_profile(["initalise_indoor_air_quality", [0x20, 0x03], 0, 0.01])
 
     def iaq_measure(self):
         """Measure the CO2eq and TVOC"""
@@ -70,30 +70,22 @@ class Adafruit_SGP30:
         return self._run_profile(["iaq_get_baseline", [0x20, 0x15], 2, 0.01])
 
     @iaq_baseline.setter
-    def iaq_baseline(self, co2eq, tvoc):
+    def iaq_baseline(self, co2_equivalent, total_volatile_organic_compounds):
         """Set the previously recorded IAQ algorithm baseline for CO2eq and TVOC"""
-        if co2eq == 0 and tvoc == 0:
+        if co2_equivalent == 0 and total_volatile_organic_compounds == 0:
             raise RuntimeError('Invalid baseline')
         buffer = []
-        for value in [tvoc, co2eq]:
+        for value in [total_volatile_organic_compounds, co2_equivalent]:
             arr = [value >> 8, value & 0xFF]
-            arr.append(self._generate_crc(arr))
+            arr.append(generate_crc(arr))
             buffer += arr
         self._run_profile(["iaq_set_baseline", [0x20, 0x1e] + buffer, 0, 0.01])
 
-
     # Low level command functions
-
     def _run_profile(self, profile):
         """Run an SGP 'profile' which is a named command set"""
-        # pylint: disable=unused-variable
-        name, command, signals, delay = profile
-        # pylint: enable=unused-variable
-
-        #print("\trunning profile: %s, command %s, %d, delay %0.02f" %
-        #   (name, ["0x%02x" % i for i in command], signals, delay))
+        _, command, signals, delay = profile
         return self._i2c_read_words_from_cmd(command, delay, signals)
-
 
     def _i2c_read_words_from_cmd(self, command, delay, reply_size):
         """Run an SGP command query, get a reply and CRC results if necessary"""
@@ -103,27 +95,25 @@ class Adafruit_SGP30:
             return None
         crc_result = bytearray(reply_size * (_SGP30_WORD_LEN +1))
         self._i2c.readfrom_into(self._addr, crc_result)
-        #print("\tRaw Read: ", crc_result)
         result = []
         for i in range(reply_size):
             word = [crc_result[3*i], crc_result[3*i+1]]
             crc = crc_result[3*i+2]
-            if self._generate_crc(word) != crc:
+            if generate_crc(word) != crc:
                 raise RuntimeError('CRC Error')
             result.append(word[0] << 8 | word[1])
-        #print("\tOK Data: ", [hex(i) for i in result])
         return result
 
-    # pylint: disable=no-self-use
-    def _generate_crc(self, data):
-        """8-bit CRC algorithm for checking data"""
-        crc = _SGP30_CRC8_INIT
-        # calculates 8-Bit checksum with given polynomial
-        for byte in data:
-            crc ^= byte
-            for _ in range(8):
-                if crc & 0x80:
-                    crc = (crc << 1) ^ _SGP30_CRC8_POLYNOMIAL
-                else:
-                    crc <<= 1
-        return crc & 0xFF
+
+def generate_crc(data):
+    """8-bit CRC algorithm for checking data"""
+    crc = _SGP30_CRC8_INIT
+    # calculates 8-Bit checksum with given polynomial
+    for byte in data:
+        crc ^= byte
+        for _ in range(8):
+            if crc & 0x80:
+                crc = (crc << 1) ^ _SGP30_CRC8_POLYNOMIAL
+            else:
+                crc <<= 1
+    return crc & 0xFF
