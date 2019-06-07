@@ -31,46 +31,48 @@ class SGP30:
         featureset = self._i2c_read_words_from_cmd([0x20, 0x2f], 0.01, 1)
         if featureset[0] != _SGP30_FEATURESET:
             raise RuntimeError('SGP30 Not detected')
-        self.initalise_indoor_air_quality()
+        self.initialise_indoor_air_quality()
 
     @property
-    def tvoc(self):
+    def total_organic_compound(self):
         """Total Volatile Organic Compound in parts per billion."""
-        return self.iaq_measure()[1]
+        return self.indoor_air_quality[1]
 
     @property
-    def baseline_tvoc(self):
+    def baseline_total_organic_compound(self):
         """Total Volatile Organic Compound baseline value"""
-        return self.get_iaq_baseline()[1]
+        return self.indoor_air_quality_baseline[1]
 
     @property
     def co2_equivalent(self):
         """Carbon Dioxide Equivalent in parts per million"""
-        return self.iaq_measure()[0]
+        return self.indoor_air_quality[0]
 
     @property
     def baseline_co2_equivilant(self):
         """Carbon Dioxide Equivalent baseline value"""
-        return self.get_iaq_baseline()[0]
+        return self.indoor_air_quality_baseline[0]
 
-    def initalise_indoor_air_quality(self):
+    def initialise_indoor_air_quality(self):
         """Initialize the IAQ algorithm"""
         # name, command, signals, delay
-        self._run_profile(["initalise_indoor_air_quality", [0x20, 0x03], 0, 0.01])
-
-    def iaq_measure(self):
-        """Measure the CO2eq and TVOC"""
-        # name, command, signals, delay
-        return self._run_profile(["iaq_measure", [0x20, 0x08], 2, 0.05])
+        self._run_profile([[0x20, 0x03], 0, 0.01])
 
     @property
-    def iaq_baseline(self):
+    def indoor_air_quality(self):
+        """Measure the CO2eq and TVOC"""
+        # name, command, signals, delay
+        return self._run_profile([[0x20, 0x08], 2, 0.05])
+
+    @property
+    def indoor_air_quality_baseline(self):
         """Get the IAQ algorithm baseline for CO2eq and TVOC"""
         # name, command, signals, delay
-        return self._run_profile(["iaq_get_baseline", [0x20, 0x15], 2, 0.01])
+        return self._run_profile([[0x20, 0x15], 2, 0.01])
 
-    @iaq_baseline.setter
-    def iaq_baseline(self, co2_equivalent, total_volatile_organic_compounds):
+    def set_indoor_air_quality_baseline(self,
+                                        co2_equivalent,
+                                        total_volatile_organic_compounds):
         """Set the previously recorded IAQ algorithm baseline for CO2eq and TVOC"""
         if co2_equivalent == 0 and total_volatile_organic_compounds == 0:
             raise RuntimeError('Invalid baseline')
@@ -79,12 +81,12 @@ class SGP30:
             arr = [value >> 8, value & 0xFF]
             arr.append(generate_crc(arr))
             buffer += arr
-        self._run_profile(["iaq_set_baseline", [0x20, 0x1e] + buffer, 0, 0.01])
+        self._run_profile([[0x20, 0x1e] + buffer, 0, 0.01])
 
     # Low level command functions
     def _run_profile(self, profile):
         """Run an SGP 'profile' which is a named command set"""
-        _, command, signals, delay = profile
+        command, signals, delay = profile
         return self._i2c_read_words_from_cmd(command, delay, signals)
 
     def _i2c_read_words_from_cmd(self, command, delay, reply_size):
