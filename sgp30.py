@@ -1,9 +1,6 @@
 import time
 from micropython import const
 
-__version__ = "0.0.0-auto.0"
-__repo__ = "https://github.com/alexmrqt/Adafruit_CircuitPython_SGP30.git"
-
 _SGP30_DEFAULT_I2C_ADDR = const(0x58)
 _SGP30_FEATURESET = const(0x0020)
 
@@ -95,7 +92,7 @@ class SGP30:
         time.sleep(delay)
         if not reply_size:
             return None
-        crc_result = bytearray(reply_size * (_SGP30_WORD_LEN +1))
+        crc_result = bytearray(reply_size * (_SGP30_WORD_LEN + 1))
         self._i2c.readfrom_into(self._addr, crc_result)
         result = []
         for i in range(reply_size):
