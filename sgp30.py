@@ -16,16 +16,12 @@ class SGP30:
     :param i2c: The `I2C` object to use. This is the only required parameter.
     :param int address: (optional) The I2C address of the device.
     """
-
     def __init__(self, i2c, address=_SGP30_DEFAULT_I2C_ADDR):
         """Initialize the sensor, get the serial # and verify that we found a proper SGP30"""
         self._i2c = i2c
         self._addr = address
-
-        # get unique serial, its 48 bits so we store in an array
-        self.serial = self._i2c_read_words_from_cmd([0x36, 0x82], 0.01, 3)
-        # get featuerset
-        featureset = self._i2c_read_words_from_cmd([0x20, 0x2f], 0.01, 1)
+        self.serial = self._i2c_read_words_from_cmd(command=[0x36, 0x82], reply_size=3, delay=0.01)
+        featureset = self._i2c_read_words_from_cmd([0x20, 0x2f], 1, 0.01)
         if featureset[0] != _SGP30_FEATURESET:
             raise RuntimeError('SGP30 Not detected')
         self.initialise_indoor_air_quality()
@@ -53,19 +49,19 @@ class SGP30:
     def initialise_indoor_air_quality(self):
         """Initialize the IAQ algorithm"""
         # name, command, signals, delay
-        self._run_profile(command=[0x20, 0x03], signals=0, delay=0.01)
+        self._i2c_read_words_from_cmd(command=[0x20, 0x03], reply_size=0, delay=0.01)
 
     @property
     def indoor_air_quality(self):
         """Measure the CO2eq and TVOC"""
         # name, command, signals, delay
-        return self._run_profile(command=[0x20, 0x08], signals=2, delay=0.05)
+        return self._i2c_read_words_from_cmd(command=[0x20, 0x08], reply_size=2, delay=0.05)
 
     @property
     def indoor_air_quality_baseline(self):
         """Get the IAQ algorithm baseline for CO2eq and TVOC"""
         # name, command, signals, delay
-        return self._run_profile(command=[0x20, 0x15], signals=2, delay=0.01)
+        return self._i2c_read_words_from_cmd(command=[0x20, 0x15], reply_size=2, delay=0.01)
 
     def set_indoor_air_quality_baseline(self,
                                         co2_equivalent,
@@ -78,14 +74,10 @@ class SGP30:
             arr = [value >> 8, value & 0xFF]
             arr.append(generate_crc(arr))
             buffer += arr
-        self._run_profile(command=[0x20, 0x1e] + buffer, signals=0, delay=0.01)
+        self._i2c_read_words_from_cmd(command=[0x20, 0x1e] + buffer, reply_size=0, delay=0.01)
 
     # Low level command functions
-    def _run_profile(self, command, signals, delay):
-        """Run an SGP 'profile' which is a named command set"""
-        return self._i2c_read_words_from_cmd(command, delay, signals)
-
-    def _i2c_read_words_from_cmd(self, command, delay, reply_size):
+    def _i2c_read_words_from_cmd(self, command, reply_size, delay):
         """Run an SGP command query, get a reply and CRC results if necessary"""
         self._i2c.writeto(self._addr, bytes(command))
         time.sleep(delay)
