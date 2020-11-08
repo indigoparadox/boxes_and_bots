@@ -22,8 +22,9 @@ class SGP30:
         self._addr = address
         self.serial = self._i2c_read_words_from_cmd(command=[0x36, 0x82], reply_size=3, delay=0.01)
         featureset = self._i2c_read_words_from_cmd([0x20, 0x2f], 1, 0.01)
-        if featureset[0] != _SGP30_FEATURESET:
-            raise RuntimeError('SGP30 Not detected')
+        #print( featureset )
+        #if featureset[0] != _SGP30_FEATURESET:
+        #    raise RuntimeError('SGP30 Not detected')
         self.initialise_indoor_air_quality()
 
     @property
