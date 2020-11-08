@@ -4,7 +4,8 @@ from machine import I2C
 from machine import unique_id
 from sgp30 import SGP30
 from pixy import CMUcam5
-from simple2 import MQTTClient
+from simple2 import MQTTClient, MQTTException
+from robocon import SixLegsController
 import ubinascii
 import gc
 import esp
@@ -46,30 +47,44 @@ def mqtt_sub_cb( topic, msg, retained, dup ):
                 force_color = tuple( int( msg[i:i+2], 16 ) for i in (0, 2, 4) )
             except Exception as e:
                 print( 'bad msg ({}): {}'.format( e, msg ) )
-    elif b'sixlegs/rotate-r' == topic:
+
+    elif b'sixlegs/rotate-ccw' == topic:
         try:
             delay = int( str( msg, 'utf-8' ) )
-            spin1.value( 1 )
-            time.sleep_ms( delay )
-            spin1.value( 0 )
+            robo.rotate_ccw( delay )
+        except Exception as e:
+            print( 'bad msg ({}): {}'.format( e, msg ) )
+
+    elif b'sixlegs/rotate-cw' == topic:
+        try:
+            delay = int( str( msg, 'utf-8' ) )
+            robo.rotate_cw( delay )
         except Exception as e:
             print( 'bad msg ({}): {}'.format( e, msg ) )
 
 def idle_thread():
     global force_color
+    global mqtt
     counter = 0
     while True:
         for rc_index in range( 255 ):
-            # Grab any MQTT messages.
-            mqtt.check_msg()
+            check_mqtt()
 
             # Grab front rangefinder distance.
             r = adc.read()
+            if r > RANGE_THRESH:
+                try:
+                    mqtt.publish( 'sixlegs/range', str( r ) )
+                except Exception as e:
+                    print( e )
     
             # Detect visual objects (blocks) from PixyCam.
             try:
                 blks = px.get_blocks( 1, 1 )
-            except OSError as e:
+                if 0 < len( blks ):
+                    for b in blks:
+                        mqtt.publish( 'sixlegs/objects', b.toJSON() )
+            except Exception as e:
                 # Sometimes we fail for some reason.
                 print( e )
     
@@ -114,16 +129,37 @@ def idle_thread():
             counter += 1
             time.sleep_ms( 25 )
 
-# Connect to MQTT.
-mqtt = MQTTClient(
-    ubinascii.hexlify( unique_id() ),
-    secrets['mqtt_srv'],
-    ssl=True if secrets['ssl'] else False,
-    socket_timeout=20 if secrets['ssl'] else 5 )
-mqtt.set_callback( mqtt_sub_cb )
-mqtt.connect()
-mqtt.subscribe( b'sixlegs/#' ) 
+def check_mqtt():
+    global mqtt
 
+    # Grab any MQTT messages, or reconnect on failure.
+    if None != mqtt:
+        try:
+            mqtt.check_msg()
+        except MQTTException as e:
+            if 0 < len( e.args ) and 1 == e.args[0]:
+                mqtt = connect_mqtt( **secrets )
+            print( 'mqtt error: {}'.format( e.args ) )
+    else:
+        # Last connect failed, so try again.
+        mqtt = connect_mqtt( **secrets )
+
+def connect_mqtt( **kwargs ):
+    mqtt_out = MQTTClient(
+        ubinascii.hexlify( unique_id() ),
+        kwargs['mqtt_srv'],
+        ssl=True if kwargs['ssl'] else False,
+        socket_timeout=20 if kwargs['ssl'] else 5 )
+    mqtt_out.set_callback( mqtt_sub_cb )
+    try:
+        mqtt_out.connect()
+    except OSError as e:
+        print( 'error connecting to mqtt: {}'.format( e ) )
+        return None
+    mqtt_out.subscribe( b'sixlegs/#' ) 
+    return mqtt_out
+
+mqtt = connect_mqtt( **secrets )
 np = NeoPixel( Pin( 27 ), 1 )
 adc = ADC( Pin( 36 ) )
 adc.read()
@@ -132,6 +168,7 @@ i2c = I2C( scl=Pin( 22 ), sda=Pin( 21 ), freq=100000 )
 sgp = SGP30( i2c )
 px = CMUcam5( i2c )
 #px.set_led( 0, 255, 0 )
+robo = SixLegsController( spin2, spin1, motor1, motor2 )
 
 idle_thread()
 
