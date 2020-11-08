@@ -1,0 +1,3 @@
+[submodule "cmucam5"]
+	path = cmucam5
+	url = https://github.com/indigoparadox/micropython-cmucam5
