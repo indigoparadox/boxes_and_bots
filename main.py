@@ -1,7 +1,5 @@
 
-from machine import ADC
-from machine import I2C
-from machine import unique_id
+from machine import ADC, I2C, unique_id
 from sgp30 import SGP30
 from pixy import CMUcam5
 from simple2 import MQTTClient, MQTTException
@@ -14,6 +12,8 @@ import ujson as json
 DEBUG = False
 esp.osdebug( None )
 gc.collect()
+
+SENSOR_COUNTDOWN_START = 10
 
 def wheel( pos ):
     # Input a value 0 to 255 to get a color value.
@@ -66,17 +66,32 @@ def idle_thread():
     global force_color
     global mqtt
     counter = 0
+    sensor_countdown = SENSOR_COUNTDOWN_START
     while True:
         for rc_index in range( 255 ):
             check_mqtt()
 
-            # Grab front rangefinder distance.
-            r = adc.read()
-            if r > RANGE_THRESH:
+            # Grab sensor data.
+            r = adc.read() # Rangefinder.
+            iaq = sgp.indoor_air_quality
+
+            # Publish sensor data.
+            if 0 >= sensor_countdown:
+                sensor_countdown = SENSOR_COUNTDOWN_START
                 try:
-                    mqtt.publish( 'sixlegs/range', str( r ) )
+                    if r > RANGE_THRESH:
+                        mqtt.publish( 'sixlegs/range', str( r ) )
+                    else:
+                        mqtt.publish( 'sixlegs/range', '0' )
+
+                    mqtt.publish( 'sixlegs/iaq-co2', str( iaq[0] ) )
+                    mqtt.publish( 'sixlegs/iaq-tvoc', str( iaq[1] ) )
                 except Exception as e:
-                    print( e )
+                    print( 'mqtt error publishing sensors: {}'.format( e ) )
+            else:
+                sensor_countdown -= 1
+                if DEBUG:
+                    print( sensor_countdown )
     
             # Detect visual objects (blocks) from PixyCam.
             try:
@@ -122,8 +137,6 @@ def idle_thread():
                 # Cycle through rainbow if nothing else going on.
                 np[0] = wheel( rc_index & 255 )
     
-            #print( sgp.indoor_air_quality )
-    
             # Perform housekeeping for this loop iter (write LED, sleep, etc.)
             np.write()
             counter += 1
@@ -148,8 +161,11 @@ def connect_mqtt( **kwargs ):
     mqtt_out = MQTTClient(
         ubinascii.hexlify( unique_id() ),
         kwargs['mqtt_srv'],
-        ssl=True if kwargs['ssl'] else False,
-        socket_timeout=20 if kwargs['ssl'] else 5 )
+        ssl=kwargs['mqtt_ssl'],
+        port=kwargs['mqtt_port'],
+        user=kwargs['mqtt_user'],
+        password=kwargs['mqtt_pass'],
+        socket_timeout=kwargs['mqtt_timeout'] )
     mqtt_out.set_callback( mqtt_sub_cb )
     try:
         mqtt_out.connect()
