@@ -4,16 +4,24 @@ from sgp30 import SGP30
 from pixy import CMUcam5
 from simple2 import MQTTClient, MQTTException
 from robocon import SixLegsController
+from neopixel import NeoPixel
 import ubinascii
 import gc
 import esp
 import ujson as json
+import time
+
 
 DEBUG = False
 esp.osdebug( None )
 gc.collect()
 
 SENSOR_COUNTDOWN_START = 10
+
+RANGE_MAX = 2000
+RANGE_THRESH = 700
+
+force_color = 0
 
 def wheel( pos ):
     # Input a value 0 to 255 to get a color value.
@@ -27,14 +35,6 @@ def wheel( pos ):
         return (0, 255 - pos * 3, pos * 3)
     pos -= 170
     return (pos * 3, 0, 255 - pos * 3)
-
-from neopixel import NeoPixel
-import time
-
-RANGE_MAX = 2000
-RANGE_THRESH = 700
-
-force_color = 0
 
 def mqtt_sub_cb( topic, msg, retained, dup ):
     global force_color
