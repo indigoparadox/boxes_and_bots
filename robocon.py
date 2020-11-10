@@ -31,3 +31,9 @@ class SixLegsController( object ):
     def rotate_ccw( self, ms ):
         self._exec_motor( self.spin_ccw, ms )
 
+    def walk_fwd( self, ms ):
+        self._exec_motor( self.move_fwd, ms )
+
+    def walk_rev( self, ms ):
+        self._exec_motor( self.move_back, ms )
+

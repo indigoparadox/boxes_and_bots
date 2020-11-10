@@ -19,7 +19,7 @@ gc.collect()
 SENSOR_COUNTDOWN_START = 10
 
 RANGE_MAX = 2000
-RANGE_THRESH = 700
+RANGE_THRESH = 1000
 
 force_color = 0
 
@@ -38,29 +38,43 @@ def wheel( pos ):
 
 def mqtt_sub_cb( topic, msg, retained, dup ):
     global force_color
-    if b'sixlegs/color' == topic:
-        if b'#000000' == msg:
-            force_color = 0
-        else:
-            try:
+    try:
+        if b'sixlegs/color' == topic:
+            if b'#000000' == msg:
+                force_color = 0
+            else:
                 msg = str( msg, 'utf-8' ).lstrip( '#' )
                 force_color = tuple( int( msg[i:i+2], 16 ) for i in (0, 2, 4) )
-            except Exception as e:
-                print( 'bad msg ({}): {}'.format( e, msg ) )
 
-    elif b'sixlegs/rotate-ccw' == topic:
-        try:
+        elif b'sixlegs/rotate-ccw' == topic:
             delay = int( str( msg, 'utf-8' ) )
             robo.rotate_ccw( delay )
-        except Exception as e:
-            print( 'bad msg ({}): {}'.format( e, msg ) )
 
-    elif b'sixlegs/rotate-cw' == topic:
-        try:
+        elif b'sixlegs/rotate-cw' == topic:
             delay = int( str( msg, 'utf-8' ) )
             robo.rotate_cw( delay )
-        except Exception as e:
-            print( 'bad msg ({}): {}'.format( e, msg ) )
+
+        elif b'sixlegs/walk-fwd' == topic:
+            delay = int( str( msg, 'utf-8' ) )
+            robo.walk_fwd( delay )
+
+        elif b'sixlegs/walk-rev' == topic:
+            delay = int( str( msg, 'utf-8' ) )
+            robo.walk_rev( delay )
+
+        elif b'sixlegs/buzz' == topic:
+            buzz = PWM( Pin( 14 ) )
+            buzz_data = json.loads( str( msg, 'utf-8' ) )
+            duty = buzz_data['d']
+            freq = buzz_data['f']
+            ms = buzz_data['ms']
+            buzz.duty( duty )
+            buzz.freq( freq )
+            time.sleep_ms( ms )
+            buzz.deinit()
+
+    except Exception as e:
+        print( 'bad msg ({}): {}'.format( e, msg ) )
 
 def idle_thread():
     global force_color
