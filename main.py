@@ -23,6 +23,16 @@ RANGE_THRESH = 1000
 
 force_color = 0
 
+def play_buzz( freq, duty, ms ):
+    buzz = PWM( Pin( 14 ) )
+    try:
+        buzz.duty( duty )
+        buzz.freq( freq )
+        time.sleep_ms( ms )
+    except Exception as e:
+        print( e )
+    buzz.deinit()
+
 def wheel( pos ):
     # Input a value 0 to 255 to get a color value.
     # The colours are a transition r - g - b - back to r.
@@ -63,15 +73,14 @@ def mqtt_sub_cb( topic, msg, retained, dup ):
             robo.walk_rev( delay )
 
         elif b'sixlegs/buzz' == topic:
-            buzz = PWM( Pin( 14 ) )
             buzz_data = json.loads( str( msg, 'utf-8' ) )
-            duty = buzz_data['d']
-            freq = buzz_data['f']
-            ms = buzz_data['ms']
-            buzz.duty( duty )
-            buzz.freq( freq )
-            time.sleep_ms( ms )
-            buzz.deinit()
+            if not isinstance( buzz_data, list ):
+                buzz_data = [buzz_data]
+            for b in buzz_data:
+                duty = b['d']
+                freq = b['f']
+                ms = b['ms']
+                play_buzz( freq, duty, ms )
 
     except Exception as e:
         print( 'bad msg ({}): {}'.format( e, msg ) )
