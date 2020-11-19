@@ -1,89 +1,76 @@
 
-from machine import Pin, I2C
-import ssd1306
 import time
-import network
-from secrets import secrets
+from umqttsimple import MQTTClient
+import gc
+import esp
+import ubinascii
+import machine
 import ujson as json
-import urequests as requests
-from microdot import Microdot, Response
-import _thread as thread
+from secrets import secrets
 
-OLED_CYAN_TOP = 16
-OLED_WIDTH = 128
-OLED_HEIGHT = 64
+esp.osdebug( None )
+gc.collect()
 
-WEATHER_URL = 'http://weather.interfinitydynamics.info/current.json'
-WEATHER_REFRESH = 10
-
-HTML_TEMPL = '''
-<!doctype html>
-<html>
-<head>
-</head>
-<body>
-Foo
-</body>
-</html>
-'''
-
-aux_text = ''
-
-def update_thread():
-    counter = 0
-    next_weather = 0
-    weather = {}
+def update_thread( mqtt ):
     while True:
-        # Blank screen and show IP.
-        oled.fill( 0 )
-        oled.text( '{}'.format( sta_if.ifconfig()[0] ), 0, 0 )
-        
-        if next_weather <= counter:
-            weather = json.loads( requests.get( WEATHER_URL ).text )
-            next_weather = counter + WEATHER_REFRESH
-
-        #print( weather['stats']['current'] )
-        oled.text( 
-            weather['stats']['current']['outTemp'].replace( '&#176;', '' ),
-            0, OLED_CYAN_TOP )
-
-        oled.text(
-            '{} ({})'.format( counter, next_weather ), 0, OLED_CYAN_TOP + 10 )
-
-        oled.text( aux_text, 0, OLED_CYAN_TOP + 20 )
-
-        counter += 1
-
-        oled.show()
-
+        #try:
+        mqtt.wait_msg()
+        #except OSError as e:
+        #    print( 'err' )
         time.sleep( 1 )
 
-# ESP32 Pin assignment 
-i2c = I2C()
-oled = ssd1306.SSD1306_I2C( OLED_WIDTH, OLED_HEIGHT, i2c )
+def mqtt_sub_cb( topic, msg ):
+    if b'beepterm/display' == topic:
+        try:
+            msg = json.loads( str( msg, 'utf-8' ) )
+            x = 0
+            if 'x' in msg:
+                x = msg['x']
+            y = 0
+            if 'y' in msg:
+                y = msg['y']
+            if 'c' in msg and msg['c']:
+                oled.fill( 0 )
+            oled.text( msg['m'], x, OLED_CYAN_TOP + y )
+            oled.show()
+        except:
+            print( 'bad msg' )
+    
+    elif b'beepterm/color' == topic:
+        try:
+            msg = json.loads( str( msg, 'utf-8' ) )
+            np[0] = (msg['r'], msg['g'], msg['b'])
+            np.write()
+        except:
+            print( 'bad msg' )
 
-# Connect to the network.
-oled.text( 'Connecting...', 0, 0 )
+    elif b'beepterm/beep' == topic:
+        try:
+            msg = json.loads( str( msg, 'utf-8' ) )
+            buzz.duty( msg['d'] )
+            buzz.freq( msg['f'] )
+            time.sleep_ms( msg['ms'] )
+            buzz.deinit()
+        except:
+            print( 'bad msg' )
+
+oled.fill( 0 )
+#oled.text( '{}'.format( sta_if.ifconfig()[0] ), 0, 0 )
+oled.text( 'Connecting MQTT...', 0, OLED_CYAN_TOP )
 oled.show()
-sta_if = network.WLAN( network.STA_IF )
-sta_if.active( True )
-sta_if.connect( secrets['ssid'], secrets['wpa2'] )
-while not sta_if.isconnected():
-    pass
 
-thread.start_new_thread( update_thread, () )
+mqtt = MQTTClient(
+    ubinascii.hexlify( machine.unique_id() ),
+    secrets['mqtt_srv'], ssl=True )
+mqtt.set_callback( mqtt_sub_cb )
+mqtt.connect()
+mqtt.subscribe( b'beepterm/display' ) 
+mqtt.subscribe( b'beepterm/color' ) 
+mqtt.subscribe( b'beepterm/beep' ) 
 
-app = Microdot()
+update_thread( mqtt )
 
-print( 'run' )
-@app.route( '/', methods=['GET'] )
-def root( req ):
-    response = Response( body=HTML_TEMPL, headers={'Content-Type': 'text/html'} )
-
-    return response
-
-app.run()
-
-#while True:
-#    pass
+oled.fill( 0 )
+oled.text( 'Ready.', 0, OLED_CYAN_TOP )
+oled.show()
 

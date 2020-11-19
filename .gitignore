@@ -1,0 +1,3 @@
+*.swp
+.micropythonrc
+secrets.py
