@@ -1,75 +1,125 @@
 
-from machine import Pin, I2C, PWM
-from neopixel import NeoPixel
-import ssd1306
-import dht
+from machine import Pin, I2C, PWM, freq, deepsleep
+from sgp30 import SGP30
+from screen import MenuScreen
 import time
+import esp32
+import machine
 
-OLED_WIDTH = 128
-OLED_HEIGHT = 64
-OLED_CYAN_TOP = 16
-
-CLK = 22
+CLK = 32
 DT = 21
-ROT_NONE = 0
-ROT_CW = 1
-ROT_CCW = 2
+ROTARY_DEBOUNCE = 50
 
-DHT_DELAY = 2000
+pclk = Pin( CLK, Pin.IN )
+pdt = Pin( DT, Pin.IN )
 
-i2c = I2C( 0, scl=Pin( 18 ), sda=Pin( 19 ) )
-oled = ssd1306.SSD1306_I2C( OLED_WIDTH, OLED_HEIGHT, i2c, addr=0x3c )
+sgp = SGP30( i2c )
+iaq = sgp.indoor_air_quality
 
-np = NeoPixel( Pin( 23 ), 1 )
-np[0] = (0, 0, 255)
-np.write()
+clk_prev = pclk.value()
+rot_handling = False
+rot_prev_ticks = time.ticks_ms()
 
-d = dht.DHT22( Pin( 16 ) )
-cur_ticks = time.ticks_ms()
-prev_ticks_dht = cur_ticks
-prev_ticks_clk = cur_ticks
-cur_clk = Pin( CLK ).value()
-prev_clk = cur_clk
-prev_rot = ROT_NONE
-rot_cursor = 0
+rotary_menu = [
+    {'label': 'Humidity', 'callback': lambda: dhts.humidity(), 'u': '%',
+    'icon': [
+        0b00000,
+        0b00100,
+        0b01110,
+        0b11111,
+        0b11101,
+        0b11101,
+        0b01110,
+        0b00000,
+    ]},
+    {'label': 'Temperature',
+    'callback': lambda: round( (dhts.temperature() * 1.8) + 32, 2 ), 'u': 'F',
+    'icon': [
+        0b00010,
+        0b10101,
+        0b00101,
+        0b10101,
+        0b00111,
+        0b10111,
+        0b00111,
+        0b00010,
+    ]},
+    {'label': 'eCO2', 'callback': lambda: iaq[0], 'u': 'p', 'icon': [
+        0b00000,
+        0b01110,
+        0b11011,
+        0b11000,
+        0b11000,
+        0b11011,
+        0b01110,
+        0b00000,
+    ]},
+    {'label': 'TVOC', 'callback': lambda: iaq[1], 'u': 'p', 'icon': [
+        0b00000,
+        0b01010,
+        0b11011,
+        0b10101,
+        0b00100,
+        0b01110,
+        0b00000,
+        0b00000,
+    ]},
+    {'label': 'Magnet', 'callback': lambda: esp32.hall_sensor(), 'u': 'm',
+    'icon': [
+        0b11111,
+        0b10111,
+        0b10111,
+        0b10101,
+        0b10101,
+        0b10001,
+        0b01110,
+        0b00000,
+    ]},
+]
 
-while True:
-    cur_clk = Pin( CLK ).value()
-    cur_dt = Pin( DT ).value()
+def handle_rotary( pin ):
+    global clk_prev
+    global rot_handling
+    global rot_prev_ticks
+    global scr
 
-    cur_ticks = time.ticks_ms()
-    if prev_ticks_dht + DHT_DELAY < cur_ticks:
-        # Only update the ticks if they cross the delay.
-        prev_ticks_dht = cur_ticks
-        try:
-            d.measure()
-        except OSError as e:
-            print( e )
+    # Debounce timer.
+    rot_cur_ticks = time.ticks_ms()
+    if rot_prev_ticks + ROTARY_DEBOUNCE > rot_cur_ticks:
+        return
+    rot_prev_ticks = rot_cur_ticks
 
-    oled.fill( 0 )
-    if cur_clk != prev_clk and 1 == cur_clk:
-        if Pin( DT ).value() != cur_clk:
-            prev_rot = ROT_CCW
-            prev_ticks_clk = cur_ticks
-            rot_cursor -= 1
+    if rot_handling:
+        return
+    rot_handling = True
+    clk_cur = pclk.value()
+    if clk_cur != clk_prev and clk_cur == 0:
+        if pdt.value() != clk_cur:
+            scr.cursor_dec()
         else:
-            prev_rot = ROT_CW
-            prev_ticks_clk = cur_ticks
-            rot_cursor += 1
+            scr.cursor_inc()
+    clk_prev = clk_cur
 
-    if ROT_NONE != prev_rot:
-        oled.text( 'CW' if ROT_CW == prev_rot else 'CCW', 0, OLED_CYAN_TOP )
-        oled.text( '{}'.format( rot_cursor ), 0, OLED_CYAN_TOP + 10 )
-        if prev_ticks_clk + 1000 < cur_ticks:
-            prev_rot = ROT_NONE   
-        
-    else:
-        oled.text( 'ThermTerm', 0, 0 )
-        oled.text( 'Hum: {}'.format( d.humidity() ), 0, OLED_CYAN_TOP )
-        temp_f = (d.temperature() * 1.8) + 32
-        oled.text( 'Temp: {}'.format( temp_f ), 0, OLED_CYAN_TOP + 10 )
+    scr.update_screen()
+    rot_handling = False
+    
+pclk.irq( trigger=Pin.IRQ_RISING|Pin.IRQ_FALLING, handler=handle_rotary )
+esp32.wake_on_ext0( pin=pclk, level=esp32.WAKEUP_ALL_LOW )
 
-    oled.show()
+scr = MenuScreen(
+    oled, OLED_WIDTH, OLED_HEIGHT, OLED_CYAN_TOP, rtc, rotary_menu )
 
-    prev_clk = cur_clk
+scr.menu = rotary_menu
+while True:
+    try:
+        print( 'updating...' )
+        dhts.measure()
+        iaq = sgp.indoor_air_quality
+    except OSError as e:
+        print( e )
+
+    scr.update_screen()
+
+    time.sleep_ms( 2000 )
+    #machine.deepsleep( 2000 )
 
