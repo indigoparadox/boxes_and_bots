@@ -1,8 +1,7 @@
-# MicroPython SSD1306 OLED driver, I2C and SPI interfaces
+#MicroPython SSD1306 OLED driver, I2C and SPI interfaces created by Adafruit
 
 import time
 import framebuf
-
 
 # register definitions
 SET_CONTRAST        = const(0x81)
@@ -93,6 +92,9 @@ class SSD1306:
 
     def pixel(self, x, y, col):
         self.framebuf.pixel(x, y, col)
+
+    def rect(self, x, y, w, h, c):
+        self.framebuf.rect(x, y, w, h, c)
 
     def scroll(self, dx, dy):
         self.framebuf.scroll(dx, dy)
