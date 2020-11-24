@@ -54,7 +54,7 @@ def color565(r, g, b):
 
 class ILI9341:
 
-    def __init__(self, spi, cs, dc, rst, w, h, r):
+    def __init__(self, spi, dc, w, h, r, cs=None, rst=None):
         self.spi = spi
         self.cs = cs
         self.dc = dc
@@ -64,9 +64,11 @@ class ILI9341:
         self.width = w
         self.height = h
         self.rotation = r
-        self.cs.init(self.cs.OUT, value=1)
+        if self.cs:
+            self.cs.init(self.cs.OUT, value=1)
         self.dc.init(self.dc.OUT, value=0)
-        self.rst.init(self.rst.OUT, value=0)
+        if self.rst:
+            self.rst.init(self.rst.OUT, value=0)
         self.reset()
         self.init()
         self._scroll = 0
@@ -159,24 +161,29 @@ class ILI9341:
         self._write(_DISPON)
 
     def reset(self):
-        self.rst(0)
-        time.sleep_ms(50)
-        self.rst(1)
-        time.sleep_ms(50)
+        if self.rst:
+            self.rst(0)
+            time.sleep_ms(50)
+            self.rst(1)
+            time.sleep_ms(50)
 
     def _write(self, command, data=None):
         self.dc(0)
-        self.cs(0)
+        if self.cs:
+            self.cs(0)
         self.spi.write(bytearray([command]))
-        self.cs(1)
+        if self.cs:
+            self.cs(1)
         if data is not None:
             self._data(data)
 
     def _data(self, data):
         self.dc(1)
-        self.cs(0)
+        if self.cs:
+            self.cs(0)
         self.spi.write(data)
-        self.cs(1)
+        if self.cs:
+            self.cs(1)
 
     def _writeblock(self, x0, y0, x1, y1, data=None):
         self._write(_CASET, ustruct.pack(">HH", x0, x1))
@@ -191,10 +198,12 @@ class ILI9341:
 
     def _read(self, command, count):
         self.dc(0)
-        self.cs(0)
+        if self.cs:
+            self.cs(0)
         self.spi.write(bytearray([command]))
         data = self.spi.read(count)
-        self.cs(1)
+        if self.cs:
+            self.cs(1)
         return data
 
     def pixel(self, x, y, color=None):
@@ -325,3 +334,4 @@ class ILI9341:
                     curx = self.chars(word+' ', curx,cury)
             curx = self._x; cury = self.next_line(cury,char_h)
         self._y = cury
+
