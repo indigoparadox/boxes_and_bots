@@ -1,60 +1,15 @@
 
 from machine import Pin, I2C, PWM, freq, deepsleep
 from sgp30 import SGP30
+from bme680 import BME680_I2C
+
 from screen import MenuScreen
 import time
 import esp32
 import machine
 
-CLK = 32
-DT = 21
-ROTARY_DEBOUNCE = 50
-
-pclk = Pin( CLK, Pin.IN )
-pdt = Pin( DT, Pin.IN )
-
-sgp = SGP30( i2c )
-iaq = sgp.indoor_air_quality
-
-clk_prev = pclk.value()
-rot_handling = False
-rot_prev_ticks = time.ticks_ms()
-
-rotary_menu = [
-    {'label': 'Humidity', 'callback': lambda: dhts.humidity(), 'u': '%',
-    'icon': [
-        0b00000,
-        0b00100,
-        0b01110,
-        0b11111,
-        0b11101,
-        0b11101,
-        0b01110,
-        0b00000,
-    ]},
-    {'label': 'Temperature',
-    'callback': lambda: round( (dhts.temperature() * 1.8) + 32, 2 ), 'u': 'F',
-    'icon': [
-        0b00010,
-        0b10101,
-        0b00101,
-        0b10101,
-        0b00111,
-        0b10111,
-        0b00111,
-        0b00010,
-    ]},
-    {'label': 'eCO2', 'callback': lambda: iaq[0], 'u': 'p', 'icon': [
-        0b00000,
-        0b01110,
-        0b11011,
-        0b11000,
-        0b11000,
-        0b11011,
-        0b01110,
-        0b00000,
-    ]},
-    {'label': 'TVOC', 'callback': lambda: iaq[1], 'u': 'p', 'icon': [
+ICONS = {
+    'tvoc': [
         0b00000,
         0b01010,
         0b11011,
@@ -63,9 +18,28 @@ rotary_menu = [
         0b01110,
         0b00000,
         0b00000,
-    ]},
-    {'label': 'Magnet', 'callback': lambda: esp32.hall_sensor(), 'u': 'm',
-    'icon': [
+    ],
+    'pressure': [
+        0b1001,
+        0b0111,
+        0b1011,
+        0b0101,
+        0b1011,
+        0b0111,
+        0b1001,
+        0b0111,
+    ],
+    'therm': [
+        0b00010,
+        0b10101,
+        0b00101,
+        0b10101,
+        0b00111,
+        0b10111,
+        0b00111,
+        0b00010,
+    ],
+    'magnet': [
         0b11111,
         0b10111,
         0b10111,
@@ -74,8 +48,79 @@ rotary_menu = [
         0b10001,
         0b01110,
         0b00000,
-    ]},
+    ],
+    'carbon': [
+        0b00000,
+        0b01110,
+        0b11011,
+        0b11000,
+        0b11000,
+        0b11011,
+        0b01110,
+        0b00000,
+    ],
+    'humidity': [
+        0b00000,
+        0b00100,
+        0b01110,
+        0b11111,
+        0b11101,
+        0b11101,
+        0b01110,
+        0b00000,
+    ],
+}
+
+CLK = 25
+DT = 21
+ROTARY_DEBOUNCE = 50
+
+pclk = Pin( CLK, Pin.IN )
+pdt = Pin( DT, Pin.IN )
+
+clk_prev = pclk.value()
+rot_handling = False
+rot_prev_ticks = time.ticks_ms()
+
+rotary_menu = [
+    {'label': 'Humidity', 'callback': lambda: round( dhts.humidity(), 1 ), 'u': '%',
+    'icon': ICONS['humidity']},
+    #{'label': 'Temperature',
+    #'callback': lambda: round( (dhts.temperature() * 1.8) + 32, 1 ), 'u': 'F',
+    #'icon': ICONS['therm']},
+    #{'label': 'Magnet', 'callback': lambda: esp32.hall_sensor(), 'u': 'm',
+    #'icon': ICONS['magnet']},
 ]
+
+bme = None
+sgp = None
+iaq = None
+try:
+    sgp = SGP30( i2c )
+    iaq = sgp.indoor_air_quality
+    rotary_menu.append(
+        {'label': 'TVOC', 'callback': lambda: iaq[1], 'u': 'p',
+            'icon': ICONS['tvoc'] } )
+    rotary_menu.append(
+        {'label': 'eCO2', 'callback': lambda: iaq[0], 'u': 'p',
+            'icon':  ICONS['carbon']} )
+except Exception as e:
+    try:
+        bme = BME680_I2C( i2c=i2c )
+        rotary_menu.append(
+            {'label': 'Temp', 'u': 'F', 'icon': ICONS['therm'],
+                'callback': lambda: round( bme.temperature, 1 )} )
+        rotary_menu.append(
+            {'label': 'Humidity', 'icon': ICONS['humidity'], 'u': '%',
+                'callback': lambda: round( bme.humidity, 1 )} )
+        rotary_menu.append(
+            {'label': 'TVOC', 'callback': lambda: round( bme.gas / 1000, 1 ),
+                'u': 'p', 'icon': ICONS['tvoc'] } )
+        rotary_menu.append(
+            {'label': 'Pressure', 'callback': lambda: round( bme.pressure, 1 ),
+                'u': 'p', 'icon': ICONS['pressure'] } )
+    except Exception as e:
+        print( e )
 
 def handle_rotary( pin ):
     global clk_prev
@@ -115,7 +160,7 @@ while True:
         print( 'updating...' )
         dhts.measure()
         iaq = sgp.indoor_air_quality
-    except OSError as e:
+    except Exception as e:
         print( e )
 
     scr.update_screen()

@@ -48,11 +48,14 @@ class MenuScreen( Screen ):
             if 'icon' in item:
                 self.oled.bitmap(
                     txt_offset_x + 1, txt_offset_y + 1, item['icon'], txt_color )
-                self.oled.text( '{:3d} {}'.format( int( item['callback']() ),
-                    item['u'] ), 9, txt_offset_y + 1, col=txt_color )
+                try:
+                    self.oled.text( '{:5} {}'.format( item['callback'](),
+                        item['u'] ), 9, txt_offset_y + 1, col=txt_color )
+                except Exception as e:
+                    print( e )
             else:
                 self.oled.text( item['label'] + '{:3d} {}'.format(
-                    int( item['callback']() ), item['u'] ),
+                    item['callback'](), item['u'] ),
                     0, txt_offset_y + 1, col=txt_color )
             idx += 1
 
