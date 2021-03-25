@@ -5,6 +5,7 @@ from pixy import CMUcam5
 from simple2 import MQTTClient, MQTTException
 from robocon import SixLegsController
 from neopixel import NeoPixel
+from max1704.max1704x import MAX1704x
 import ubinascii
 import gc
 import esp
@@ -109,13 +110,18 @@ def idle_thread():
 
                     mqtt.publish( 'sixlegs/iaq-co2', str( iaq[0] ) )
                     mqtt.publish( 'sixlegs/iaq-tvoc', str( iaq[1] ) )
+
+                    # Publish battery data.
+                    mqtt.publish( 'sixlegs/charge', str( m.soc ) )
+    
                 except Exception as e:
                     print( 'mqtt error publishing sensors: {}'.format( e ) )
+
             else:
                 sensor_countdown -= 1
                 if DEBUG:
                     print( sensor_countdown )
-    
+
             # Detect visual objects (blocks) from PixyCam.
             try:
                 blks = px.get_blocks( 1, 1 )
@@ -205,6 +211,7 @@ adc.read()
 adc.atten( ADC.ATTN_11DB )
 i2c = I2C( scl=Pin( 22 ), sda=Pin( 21 ), freq=100000 )
 sgp = SGP30( i2c )
+m = MAX1704x( i2c )
 px = CMUcam5( i2c )
 #px.set_led( 0, 255, 0 )
 robo = SixLegsController( spin2, spin1, motor1, motor2 )

@@ -4,3 +4,6 @@
 [submodule "sgp30"]
 	path = sgp30
 	url = https://github.com/indigoparadox/micropython-sgp30
+[submodule "max1704"]
+	path = max1704
+	url = https://github.com/indigoparadox/max1704-micropython
