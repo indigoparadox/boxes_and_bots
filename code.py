@@ -8,6 +8,7 @@ import wifi
 import socketpool
 import adafruit_requests
 import time
+import displayio
 from adafruit_pm25.i2c import PM25_I2C
 from adafruit_scd30 import SCD30
 from adafruit_sgp30 import Adafruit_SGP30
@@ -35,21 +36,33 @@ def connect_wifi():
     mqtt_client.connect()
     return mqtt_client
 
-def poll_sensor( sensor, sensor_name : str, sensor_class, poll_func, i2c, mqtt_client : MQTT.MQTT, display ):
+def poll_sensor( idx : int, sensor : dict, i2c : busio.I2C, mqtt_client : MQTT.MQTT, display, font ) -> dict:
     try:
         # Grab the sensor value dict from poller functions.
-        poll_res = poll_func( sensor )
+        poll_res = sensor['processor']( sensor['sensor'] )
+
+        # Create display string.
+        try:
+            sensor['label'] = label.Label( font, text=','.join( ['{}: {}'.format( x, poll_res[x] ) for x in sensor['display_keys']] ) )
+            sensor['label'].x = 20
+            sensor['label'].y = 40 + (20 * idx)
+        except Exception as e:
+            print( '{}: {} ({})'.format( type( e ), e, poll_res ) )
+
+        # Publish all values to MQTT.
         for key in poll_res:
-            mqtt_client.publish(
-                'funhouse/{}/{}/{}'.format( os.getenv( 'FUNHOUSE_ID' ), sensor_name, key.replace( ' ', '_' ) ), poll_res[key] )
+            mqtt_client.publish( 'funhouse/{}/{}/{}'.format(
+                os.getenv( 'FUNHOUSE_ID' ),
+                sensor['name'],
+                key.replace( ' ', '_' ) ), poll_res[key] )
     except Exception as e:
         try:
             # Try to setup the sensor for the first time.
-            print( 'read failed: {}: setting up {}...'.format( e, sensor_name ) )
-            sensor = sensor_class( i2c )
+            print( 'read failed: {}: setting up {}...'.format( e, sensor['name'] ) )
+            sensor['sensor'] = sensor['class']( i2c )
         except Exception as e:
             # Sensor failure.
-            print( '{}: could not find sensor: {}'.format( sensor_name, e ) )
+            print( '{}: could not find sensor: {}'.format( sensor['name'], e ) )
     return sensor
 
 def main():
@@ -57,23 +70,50 @@ def main():
     mqtt_client = None
     mqtt_client = connect_wifi()
     i2c = busio.I2C( board.SCL, board.SDA, frequency=50000 )
-    pmsa = None
-    scd30 = None
-    sgp30 = None
 
     font = bitmap_font.load_font( os.getenv( 'FONT_BDF' ) )
     color = 0xFF00FF
 
+    sensors = [
+        {
+            'sensor': None,
+            'name': 'sgp30',
+            'class': Adafruit_SGP30,
+            'display_keys': ['tvoc'],
+            'processor': lambda x: dict( zip( ['eco2', 'tvoc'], x.iaq_measure() ) )
+        },
+        {
+            'sensor': None,
+            'name': 'pmsa',
+            'class': PM25_I2C,
+            'display_keys': ['pm25 env'],
+            'processor': lambda x: x.read()
+        },
+        {
+            'sensor': None,
+            'name': 'scd30',
+            'class': SCD30,
+            'display_keys': ['co2', 'temperature', 'relative_humidity'],
+            'processor': lambda y: {x.lower(): getattr( y, x ) for x in ['CO2', 'temperature', 'relative_humidity']} if y.data_available else {}
+        }
+    ]
+
     while True:
         mqtt_client.loop()
-        #try:
-        #    print( wifi.radio.ipv4_address )
-        #except Exception as e:
-        #    print( "connection failure: " + str( e ) )
 
-        pmsa = poll_sensor( pmsa, 'pmsa', PM25_I2C, lambda x: x.read(), i2c, mqtt_client, board.DISPLAY )
-        sgp30 = poll_sensor( sgp30, 'sgp30', Adafruit_SGP30, lambda x: dict( zip( ['eco2', 'tvoc'], sgp30.iaq_measure() ) ), i2c, mqtt_client, board.DISPLAY )
-        scd30 = poll_sensor( scd30, 'scd30', SCD30, lambda y: {x.lower(): getattr( y, x ) for x in ['CO2', 'temperature', 'relative_humidity']} if scd30.data_available else {}, i2c, mqtt_client, board.DISPLAY )
+        group = displayio.Group()
+
+        ip_label = label.Label( font=font, text='{}'.format( wifi.radio.ipv4_address ) )
+        ip_label.x = 10
+        ip_label.y = 20
+        group.append( ip_label )
+
+        for i in range( 0, 3 ):
+            sensors[i] = poll_sensor( i, sensors[i], i2c, mqtt_client, board.DISPLAY, font )
+            if 'label' in sensors[i]:
+                group.append( sensors[i]['label'] )
+
+        display.show( group )
 
         time.sleep( 5 )
 
