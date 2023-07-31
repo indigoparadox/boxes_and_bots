@@ -44,7 +44,7 @@ def poll_sensor( idx : int, sensor : dict, i2c : busio.I2C, mqtt_client : MQTT.M
         # Create display string.
         try:
             sensor['label'] = label.Label( font, text=','.join( ['{}: {}'.format( x, poll_res[x] ) for x in sensor['display_keys']] ) )
-            sensor['label'].x = 20
+            sensor['label'].x = 10
             sensor['label'].y = 40 + (20 * idx)
         except Exception as e:
             print( '{}: {} ({})'.format( type( e ), e, poll_res ) )
@@ -73,6 +73,7 @@ def main():
 
     font = bitmap_font.load_font( os.getenv( 'FONT_BDF' ) )
     color = 0xFF00FF
+    display.brightness = 0.3
 
     sensors = [
         {
@@ -110,8 +111,10 @@ def main():
 
         for i in range( 0, 3 ):
             sensors[i] = poll_sensor( i, sensors[i], i2c, mqtt_client, board.DISPLAY, font )
-            if 'label' in sensors[i]:
+            try:
                 group.append( sensors[i]['label'] )
+            except Exception as e:
+                print( 'label error: {}'.format( e ) )
 
         display.show( group )
 
