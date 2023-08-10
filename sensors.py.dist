@@ -1,0 +1,52 @@
+
+from adafruit_pm25.i2c import PM25_I2C
+from adafruit_scd30 import SCD30
+from adafruit_sgp30 import Adafruit_SGP30
+
+class SensorBank:
+
+    sensors = [
+        {
+            'sensor': None,
+            'name': 'sgp30',
+            'class': Adafruit_SGP30,
+            'display_keys': {'tvoc': 'TVOC'},
+            'processor': lambda x: \
+                dict( zip( ['eco2', 'tvoc'], x.iaq_measure() ) ),
+            'last_resp': None,
+            'thresholds': {'tvoc': 500}
+        },
+        {
+            'sensor': None,
+            'name': 'pmsa',
+            'class': PM25_I2C,
+            'display_keys': {'pm25 env': 'PM2.5'},
+            'processor': lambda x: x.read(),
+            'last_resp': None,
+            'thresholds': {'pm25 env': 40}
+        },
+        {
+            'sensor': None,
+            'name': 'scd30',
+            'class': SCD30,
+            'display_keys': {
+                'co2': 'CO2',
+                'temperature': 'Temperature',
+                'relative_humidity': 'Humidity'},
+            'processor': lambda y: {x.lower(): getattr( y, x ) \
+                for x in ['CO2', 'temperature', 'relative_humidity']} \
+                if y.data_available else {},
+            'last_resp': None,
+            'thresholds': {'co2': 1000, 'temperature': 25, 'relative_humidity': 50}
+        }
+    ]
+
+    def count( self ):
+        return len( self.sensors )
+
+    def __getitem__( self, key ):
+        return self.sensors[key]
+
+    def __setitem__( self, key, value ):
+        self.sensors[key] = value
+ 
