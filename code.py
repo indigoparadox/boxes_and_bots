@@ -13,19 +13,11 @@ import atexit
 import traceback
 import random
 import digitalio
-import adafruit_minimqtt.adafruit_minimqtt as MQTT
+import asyncio
+from adafruit_minimqtt import adafruit_minimqtt
 from adafruit_display_text import label
 from adafruit_bitmap_font import bitmap_font
 from sensors import SensorBank
-
-def on_reload( mqtt_client ):
-    print( 'disconnecting MQTT...' )
-    mqtt_client.disconnect()
-
-def on_mqtt_connect( mqtt_client, userdata, flags, rc ):
-    # This function will be called when the mqtt_client is connected
-    # successfully to the broker.
-    print( 'connected to MQTT broker' )
 
 def connect_wifi():
     connected = False
@@ -39,44 +31,74 @@ def connect_wifi():
             print( '{}: {}'.format( type( e ), e ) )
     return socketpool.SocketPool( wifi.radio )
 
-def connect_mqtt( sensors, socket_pool ):
-    if not os.getenv( 'MQTT_HOST' ):
-        return None
+class MQTTHandler:
 
-    mqtt_client = MQTT.MQTT(
-        broker=os.getenv( 'MQTT_HOST' ),
-        port=os.getenv( 'MQTT_PORT' ),
-        username=os.getenv( 'MQTT_USER' ),
-        password=os.getenv( 'MQTT_PASSWORD' ),
-        socket_pool=socket_pool
-    )
+    def __init__( self, display : DisplayHandler, socket_pool ):
+        self.client = None
+        self.display = display
+        self.socket_pool = socket_pool
 
-    mqtt_client.will_set(
-        'funhouse/{}/ip'.format( os.getenv( 'FUNHOUSE_ID' ) ),
-        '',
-        0,
-        True )
-    for sensor in sensors:
-        for key in sensor['last_resp']:
-            print( 'setting will for funhouse/{}/{}/{}'.format(
-                    os.getenv( 'FUNHOUSE_ID' ),
-                    sensor['name'],
-                    key.replace( ' ', '_' ) ) )
-            mqtt_client.will_set(
-                'funhouse/{}/{}/{}'.format(
-                    os.getenv( 'FUNHOUSE_ID' ),
-                    sensor['name'],
-                    key.replace( ' ', '_' ) ),
-                '',
-                0,
-                True )
-    mqtt_client.on_connect = on_mqtt_connect
-    print( 'connecting to MQTT...' )
-    mqtt_client.connect()
-    atexit.register( on_reload, mqtt_client )
-    return mqtt_client
+    def on_reload( self ):
+        print( 'disconnecting MQTT...' )
+        self.client.disconnect()
+    
+    def on_connect( self, mqtt_client, userdata, flags, rc ):
+        # This function will be called when the mqtt_client is connected
+        # successfully to the broker.
+        print( 'connected to MQTT broker' )
+        self.display.update_mqtt_label( self )
 
-def poll_sensor( idx : int, sensor : dict, i2c : busio.I2C, mqtt_client : MQTT.MQTT ) -> dict:
+    def on_disconnected( self ):
+        self.client = None
+        self.display.update_mqtt_label( self )
+    
+    def connect( self, sensors : SensorBank ):
+        if not os.getenv( 'MQTT_HOST' ):
+            return None
+    
+        self.client = adafruit_minimqtt.MQTT(
+            broker=os.getenv( 'MQTT_HOST' ),
+            port=os.getenv( 'MQTT_PORT' ),
+            username=os.getenv( 'MQTT_USER' ),
+            password=os.getenv( 'MQTT_PASSWORD' ),
+            socket_pool=self.socket_pool )
+    
+        self.client.will_set(
+            'funhouse/{}/ip'.format( os.getenv( 'FUNHOUSE_ID' ) ),
+            '',
+            0,
+            True )
+        for sensor in sensors:
+            for key in sensor['last_resp']:
+                print( 'setting will for funhouse/{}/{}/{}'.format(
+                        os.getenv( 'FUNHOUSE_ID' ),
+                        sensor['name'],
+                        key.replace( ' ', '_' ) ) )
+                self.client.will_set(
+                    'funhouse/{}/{}/{}'.format(
+                        os.getenv( 'FUNHOUSE_ID' ),
+                        sensor['name'],
+                        key.replace( ' ', '_' ) ),
+                    '',
+                    0,
+                    True )
+        self.client.on_connect = self.on_connect
+        print( 'connecting to MQTT...' )
+        self.client.connect()
+        atexit.register( self.on_reload )
+
+    def publish( self, topic : str, message : str ):
+        if self.client:
+            try:
+                self.client.publish(
+                    topic, message,
+                    True if os.getenv( 'MQTT_RETAIN' ) > 0 else False,
+                    0 )
+            except (adafruit_minimqtt.MMQTTException, OSError) as e:
+                print( 'MQTT: {}: {}', type( e ), e )
+                self.on_disconnected()
+
+def poll_sensor( idx : int, sensor : dict, i2c : busio.I2C, mqtt : MQTTHandler ) -> dict:
     try:
 
         if 'multiplex' in sensor:
@@ -88,24 +110,23 @@ def poll_sensor( idx : int, sensor : dict, i2c : busio.I2C, mqtt_client : MQTT.M
         sensor['last_resp'] = poll_res
 
         # Create display string.
-        try:
-            sensor['values'] = {}
-            sensor['values'] = {sensor['display_keys'][x]: poll_res[x] \
-                for x in sensor['display_keys']}
-        except Exception as e:
-            print( 'poll error: {}: {} ({})'.format( type( e ), e, poll_res ) )
+        #try:
+        sensor['values'] = {}
+        sensor['values'] = {sensor['display_keys'][x]: poll_res[x] \
+            for x in sensor['display_keys']}
+        #except Exception as e:
+        #    print( 'poll error: {}: {} ({})'.format( type( e ), e, poll_res ) )
 
+        # TODO: Only push MQTT/display if value changed.
+                
         # Publish all values to MQTT.
         for key in poll_res:
-            if mqtt_client:
-                mqtt_client.publish(
-                    'funhouse/{}/{}/{}'.format(
-                        os.getenv( 'FUNHOUSE_ID' ),
-                        sensor['name'],
-                        key.replace( ' ', '_' ) ),
-                    poll_res[key],
-                    True if os.getenv( 'MQTT_RETAIN' ) > 0 else False,
-                    0 )
+            mqtt.publish(
+                'funhouse/{}/{}/{}'.format(
+                    os.getenv( 'FUNHOUSE_ID' ),
+                    sensor['name'],
+                    key.replace( ' ', '_' ) ),
+                poll_res[key] )
     except (KeyError, AttributeError, RuntimeError) as e:
         try:
             # Try to setup the sensor for the first time.
@@ -122,17 +143,7 @@ def poll_sensor( idx : int, sensor : dict, i2c : busio.I2C, mqtt_client : MQTT.M
                 traceback.print_exception( e )
     return sensor
 
-def poll_all_sensors( sensors, mqtt_client, i2c ):
-
-    for i in range( 0, sensors.count()  ):
-        try:
-            sensors[i] = poll_sensor( i, sensors[i], i2c, mqtt_client )
-        except (MQTT.MMQTTException, OSError) as e:
-            print( 'MQTT: {}: {}', type( e ), e )
-            mqtt_client = None
-    return sensors
-
-class Display:
+class DisplayHandler:
 
     balloon_x = 20
     label_x = 46
@@ -256,9 +267,9 @@ class Display:
         if self.ip_label:
             self.ip_label.text = '{}'.format( wifi.radio.ipv4_address )
     
-    def update_mqtt_label( self, mqtt ):
-        if mqtt and self.mqtt_label:
-            self.mqtt_label.text = 'MQTT Connected' if mqtt else 'MQTT Not Connected'
+    def update_mqtt_label( self, mqtt : MQTTHandler ):
+        if self.mqtt_label:
+            self.mqtt_label.text = 'MQTT Connected' if mqtt.client else 'MQTT Not Connected'
 
     def update_sensor_label( self, idx : int, sensor : dict, key : str ):
         display_key = sensor['display_keys'][key]
@@ -317,82 +328,46 @@ class Display:
 
         return sensor
 
-def main():
-    sensors = SensorBank()
-    sensor_display_count = 0
-    for i in range( 0, sensors.count()  ):
-        sensor_display_count += len( sensors[i]['display_keys'] )
-
-    button_up = digitalio.DigitalInOut( board.BUTTON_UP )
-    button_up.switch_to_input( pull=digitalio.Pull.DOWN )
-    button_down = digitalio.DigitalInOut( board.BUTTON_DOWN )
-    button_down.switch_to_input( pull=digitalio.Pull.DOWN )
-    
-    display = Display( board.DISPLAY, sensor_display_count )
-
-    #group = displayio.Group()
-    check_cycles = os.getenv( 'CHECK_CYCLES' )
-
-    #connect_label = label.Label(
-    #    font=font, text='{}'.format( 'Connecting...' ) )
-    #connect_label.x = int( display.width / 2 ) - int( connect_label.width / 2 )
-    #connect_label.y = int( display.height / 2 )
-    #group.append( connect_label )
-    #display.show( group )
-
-    socket_pool = connect_wifi()
-    mqtt_client = None
-    i2c = busio.I2C( board.SCL, board.SDA, frequency=50000 )
+async def poll_all_sensors( sensors : SensorBank, mqtt : MQTTHandler, i2c ):
 
     while True:
-        # Update MQTT client if exists/connected, or reconnect.
-        if mqtt_client:
-            try:
-                mqtt_client.loop()
+        for i in range( 0, sensors.count()  ):
+            sensors[i] = poll_sensor( i, sensors[i], i2c, mqtt )
+            await asyncio.sleep( 3 )
 
-                mqtt_client.publish(
+async def refresh_mqtt( mqtt : MQTTHandler, display : DisplayHandler, sensors : SensorBank ):
+
+    '''Update MQTT client if exists/connected, or reconnect. '''
+    
+    while True:
+        if mqtt.client:
+            try:
+                mqtt.client.loop()
+                mqtt.publish(
                     'funhouse/{}/ip'.format( os.getenv( 'FUNHOUSE_ID' ) ),
-                    str( wifi.radio.ipv4_address ),
-                    True if os.getenv( 'MQTT_RETAIN' ) > 0 else False,
-                    0 )
-            except (MQTT.MMQTTException, OSError) as e:
+                    str( wifi.radio.ipv4_address ) )
+            except (adafruit_minimqtt.MMQTTException, OSError) as e:
                 print( 'MQTT: {}: {}', type( e ), e )
-                mqtt_client = None
-                display.mqtt_label( mqtt_client )
+                mqtt.on_disconnected()
                 
         elif not None in [x['sensor'] for x in sensors] and \
         not None in [x['last_resp'] for x in sensors]:
             try:
-                mqtt_client = connect_mqtt( sensors, socket_pool )
-            except Exception as e:
+                mqtt.connect( sensors )
+            except (adafruit_minimqtt.MMQTTException, OSError) as e:
                 print( 'MQTT: {}: {}'.format( type( e ), e ) )
-                mqtt_client = None
+                mqtt.on_disconnected()
+        await asyncio.sleep( 1 )
 
-        # Update character and special labels.
+async def refresh_display( display : DisplayHandler, sensors : SensorBank ):
+    while True:
+        
         display.move_char(
             int( display.display.width / 2 ) - 16,
             display.display.height - 64 )
         display.increment_char_frame()
         display.update_ip_label()
-        display.update_mqtt_label( mqtt_client )
-
-        # Check buttons state.
-        if button_down.value:
-            display.selected_idx += 1
-            if sensor_display_count <= display.selected_idx:
-                display.selected_idx = 0
-        elif button_up.value:
-            display.selected_idx -= 1
-            if sensor_display_count <= display.selected_idx:
-                display.selected_idx = sensor_display_count - 1
-
-        # Poll sensors.
-        if os.getenv( 'CHECK_CYCLES' ) <= check_cycles:
-            sensors = poll_all_sensors( sensors, mqtt_client, i2c )
-            check_cycles = 0
-        else:
-            check_cycles += 1
-
+        
         # Redraw sensors.
         j = 0
         if os.getenv( 'DISPLAY_IP' ):
@@ -408,9 +383,43 @@ def main():
                 #    print( 'label error: {}: {}'.format( type( e ), e ) )
                 #    if os.getenv( 'DEBUG' ):
                 #        traceback.print_exception( e )
+    
+        await asyncio.sleep( 0.33 )
 
-        time.sleep( 0.1 )
+async def main():
+    sensors = SensorBank()
+    sensor_display_count = 0
+    for i in range( 0, sensors.count()  ):
+        sensor_display_count += len( sensors[i]['display_keys'] )
 
+    button_up = digitalio.DigitalInOut( board.BUTTON_UP )
+    button_up.switch_to_input( pull=digitalio.Pull.DOWN )
+    button_down = digitalio.DigitalInOut( board.BUTTON_DOWN )
+    button_down.switch_to_input( pull=digitalio.Pull.DOWN )
+    
+    display = DisplayHandler( board.DISPLAY, sensor_display_count )
+
+    socket_pool = connect_wifi()
+    mqtt = MQTTHandler( display, socket_pool )
+    i2c = busio.I2C( board.SCL, board.SDA, frequency=50000 )
+
+    while True:
+        
+        # Check buttons state.
+        if button_down.value:
+            display.selected_idx += 1
+            if sensor_display_count <= display.selected_idx:
+                display.selected_idx = 0
+        elif button_up.value:
+            display.selected_idx -= 1
+            if sensor_display_count <= display.selected_idx:
+                display.selected_idx = sensor_display_count - 1
+
+        poller_task = asyncio.create_task( poll_all_sensors( sensors, mqtt, i2c ) )
+        mqtt_task = asyncio.create_task( refresh_mqtt( mqtt, display, sensors ) )
+        redraw_task = asyncio.create_task( refresh_display( display, sensors ) )
+        await asyncio.gather( poller_task, mqtt_task, redraw_task )
+        
 if '__main__' == __name__:
-    main()
+    asyncio.run( main() )
 
