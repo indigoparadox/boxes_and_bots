@@ -22,5 +22,5 @@ Copy all code to Funhouse with the following adafruit support libraries in lib:
 
 ## Credits
 
- * Emote balloons by Kenney (https://kenney.nl/assets/emotes-pack).
+ * Emote balloons and UI elements by Kenney (https://kenney.nl/assets/emotes-pack).
 

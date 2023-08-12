@@ -12,6 +12,7 @@ import displayio
 import atexit
 import traceback
 import random
+import digitalio
 import adafruit_minimqtt.adafruit_minimqtt as MQTT
 from adafruit_display_text import label
 from adafruit_bitmap_font import bitmap_font
@@ -133,11 +134,19 @@ def poll_all_sensors( sensors, mqtt_client, i2c ):
 
 class Display:
 
-    def __init__( self, display ):
+    balloon_x = 20
+    label_x = 46
+    label_color = 0
+    label_y_inc = 24
+
+    def __init__( self, display : displayio.Display, sensor_display_count : int ):
         self.group = displayio.Group()
         self.font = bitmap_font.load_font( os.getenv( 'FONT_BDF' ) )
-        self.last_y = 20
+        self.last_y = 10
+        self.sensor_display_count = sensor_display_count
         self.balloon_bmp = displayio.OnDiskBitmap( 'balloons.bmp' )
+        self.ui_bmp = displayio.OnDiskBitmap( 'uiwin.bmp' )
+        self.selected_idx = 2
         
         # Setup background tilemap.
         if os.getenv( 'TILE_BITMAP' ):
@@ -145,23 +154,57 @@ class Display:
             self.platform = displayio.TileGrid(
                 self.platform_bmp,
                 pixel_shader=self.platform_bmp.pixel_shader,
-                tile_width=16, tile_height=16, width=15, height=15,
+                tile_width=16, tile_height=16, width=15, height=4,
                 default_tile=0 )
-            self.group.append( self.platform )
+            self.platform.y = 176
 
+            # Draw a pastoral scene.
+            for x in range( 0, 15 ):
+                self.platform[x, 0] = 12
+                self.platform[x, 1] = 12
+                rand_num = random.randint( 0, 5 )
+                if 4 < rand_num:
+                    self.platform[x, 2] = 75
+                elif 3 < rand_num:
+                    self.platform[x, 2] = 76
+                else:
+                    self.platform[x, 2] = 12
+                self.platform[x, 3] = 2
+
+            self.group.append( self.platform )
+            
+        if os.getenv( 'DISPLAY_IP' ):
+            self.sensor_display_count += 1
+            
+        if os.getenv( 'DISPLAY_MQTT' ):
+            self.sensor_display_count += 1
+
+        # Draw UI elements.
+        self.ui = displayio.TileGrid(
+            self.ui_bmp,
+            pixel_shader=self.ui_bmp.pixel_shader,
+            tile_width=24, tile_height=24, width=8, height=self.sensor_display_count )
+        self.ui.x = 40
+        for y in range( 0, self.sensor_display_count ):
+            self.set_ui_line( y, False, True if self.selected_idx == y else False )
+        self.group.append( self.ui )
+
+        # Draw IP label.
         if os.getenv( 'DISPLAY_IP' ):
             self.ip_label = label.Label(
-                font=self.font, text='Connecting...' )
-            self.ip_label.x = 10
+                font=self.font, color=self.label_color, text='Connecting...' )
+            self.ip_label.x = self.label_x
             self.ip_label.y = self.last_y
-            self.last_y += 20
+            self.last_y += self.label_y_inc
             self.group.append( self.ip_label )
-    
+
+        # Draw MQTT label.
         if os.getenv( 'DISPLAY_MQTT' ): 
-            self.mqtt_label = label.Label( font=self.font, text='Waiting for MQTT...' )
-            self.mqtt_label.x = 10
+            self.mqtt_label = label.Label(
+                font=self.font, color=self.label_color, text='Waiting for MQTT...' )
+            self.mqtt_label.x = self.label_x
             self.mqtt_label.y = self.last_y
-            self.last_y += 20
+            self.last_y += self.label_y_inc
             self.group.append( self.mqtt_label )
 
         # Setup avatar character.
@@ -180,6 +223,23 @@ class Display:
         self.display = display
         self.display.brightness = 0.3
         self.display.root_group = self.group
+
+    def set_ui_line( self, y : int, warning : bool, selected : bool ):
+        for x in range( 0, 8 ):
+            if selected:
+                if 0 == x:
+                    self.ui[x, y] = 6 if warning else 0
+                elif 10 == x:
+                    self.ui[x, y] = 8 if warning else 2
+                else:
+                    self.ui[x, y] = 7 if warning else 1
+            else:
+                if 0 == x:
+                    self.ui[x, y] = 21 if warning else 15
+                elif 10 == x:
+                    self.ui[x, y] = 23 if warning else 17
+                else:
+                    self.ui[x, y] = 22 if warning else 16
 
     def move_char( self, x, y ):
         self.char_sprite.x = x
@@ -200,7 +260,7 @@ class Display:
         if mqtt and self.mqtt_label:
             self.mqtt_label.text = 'MQTT Connected' if mqtt else 'MQTT Not Connected'
 
-    def update_sensor_label( self, sensor, key ):
+    def update_sensor_label( self, idx : int, sensor : dict, key : str ):
         display_key = sensor['display_keys'][key]
 
         # Draw status icon.
@@ -213,7 +273,7 @@ class Display:
                 pixel_shader=self.balloon_bmp.pixel_shader,
                 tile_width=16, tile_height=16, width=1, height=1,
                 default_tile=0 )
-            sensor['balloons'][key].x = 10
+            sensor['balloons'][key].x = self.balloon_x
             sensor['balloons'][key].y = self.last_y - int( sensor['balloons'][key].tile_height / 2 )
             self.group.append( sensor['balloons'][key] )
         
@@ -223,12 +283,15 @@ class Display:
             sensor['thresholds'][key]:
                 # Alert balloon.
                 sensor['balloons'][key][0, 0] = 8
+                self.set_ui_line( idx, True, True if self.selected_idx == idx else False )
             else:
                 # Blank balloon.
                 sensor['balloons'][key][0, 0] = 0
+                self.set_ui_line( idx, False, True if self.selected_idx == idx else False )
         else:
             # Question balloon.
             sensor['balloons'][key][0, 0] = 9
+            self.set_ui_line( idx, True, True if self.selected_idx == idx else False )
 
         # Draw status text.
         if 'values' in sensor and sensor['values']:
@@ -244,10 +307,10 @@ class Display:
             sensor['labels'] = {}
 
         if not key in sensor['labels']:
-            sensor['labels'][key] = label.Label( font=self.font, text=lbl_text )
-            sensor['labels'][key].x = 30
+            sensor['labels'][key] = label.Label( font=self.font, color=self.label_color, text=lbl_text )
+            sensor['labels'][key].x = self.label_x
             sensor['labels'][key].y = self.last_y
-            self.last_y += 20
+            self.last_y += self.label_y_inc
             self.group.append( sensor['labels'][key] )
         else:
             sensor['labels'][key].text = lbl_text
@@ -255,9 +318,19 @@ class Display:
         return sensor
 
 def main():
-    display = Display( board.DISPLAY )
+    sensors = SensorBank()
+    sensor_display_count = 0
+    for i in range( 0, sensors.count()  ):
+        sensor_display_count += len( sensors[i]['display_keys'] )
 
-    group = displayio.Group()
+    button_up = digitalio.DigitalInOut( board.BUTTON_UP )
+    button_up.switch_to_input( pull=digitalio.Pull.DOWN )
+    button_down = digitalio.DigitalInOut( board.BUTTON_DOWN )
+    button_down.switch_to_input( pull=digitalio.Pull.DOWN )
+    
+    display = Display( board.DISPLAY, sensor_display_count )
+
+    #group = displayio.Group()
     check_cycles = os.getenv( 'CHECK_CYCLES' )
 
     #connect_label = label.Label(
@@ -270,7 +343,6 @@ def main():
     socket_pool = connect_wifi()
     mqtt_client = None
     i2c = busio.I2C( board.SCL, board.SDA, frequency=50000 )
-    sensors = SensorBank()
 
     while True:
         # Update MQTT client if exists/connected, or reconnect.
@@ -296,23 +368,42 @@ def main():
                 print( 'MQTT: {}: {}'.format( type( e ), e ) )
                 mqtt_client = None
 
+        # Update character and special labels.
         display.move_char(
             int( display.display.width / 2 ) - 16,
-            display.display.height - 32 )
+            display.display.height - 64 )
         display.increment_char_frame()
         display.update_ip_label()
         display.update_mqtt_label( mqtt_client )
 
+        # Check buttons state.
+        if button_down.value:
+            display.selected_idx += 1
+            if sensor_display_count <= display.selected_idx:
+                display.selected_idx = 0
+        elif button_up.value:
+            display.selected_idx -= 1
+            if sensor_display_count <= display.selected_idx:
+                display.selected_idx = sensor_display_count - 1
+
+        # Poll sensors.
         if os.getenv( 'CHECK_CYCLES' ) <= check_cycles:
             sensors = poll_all_sensors( sensors, mqtt_client, i2c )
             check_cycles = 0
         else:
             check_cycles += 1
 
+        # Redraw sensors.
+        j = 0
+        if os.getenv( 'DISPLAY_IP' ):
+            j += 1
+        if os.getenv( 'DISPLAY_MQTT' ):
+            j += 1
         for i in range( 0, sensors.count()  ):
             for key in sensors[i]['display_keys']:
                 #try:
-                sensors[i] = display.update_sensor_label( sensors[i], key )
+                sensors[i] = display.update_sensor_label( j, sensors[i], key )
+                j += 1
                 #except Exception as e:
                 #    print( 'label error: {}: {}'.format( type( e ), e ) )
                 #    if os.getenv( 'DEBUG' ):
