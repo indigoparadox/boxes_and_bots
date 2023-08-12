@@ -150,11 +150,10 @@ class DisplayHandler:
     label_color = 0
     label_y_inc = 24
 
-    def __init__( self, display : displayio.Display, sensor_display_count : int ):
+    def __init__( self, display : displayio.Display, sensors : SensorBank ):
         self.group = displayio.Group()
         self.font = bitmap_font.load_font( os.getenv( 'FONT_BDF' ) )
         self.last_y = 10
-        self.sensor_display_count = sensor_display_count
         self.balloon_bmp = displayio.OnDiskBitmap( 'balloons.bmp' )
         self.ui_bmp = displayio.OnDiskBitmap( 'uiwin.bmp' )
         self.selected_idx = 2
@@ -183,20 +182,24 @@ class DisplayHandler:
                 self.platform[x, 3] = 2
 
             self.group.append( self.platform )
+
+        self.sensor_count = 0
+        for i in range( 0, sensors.count()  ):
+            self.sensor_count += len( sensors[i]['display_keys'] )
             
         if os.getenv( 'DISPLAY_IP' ):
-            self.sensor_display_count += 1
+            self.sensor_count += 1
             
         if os.getenv( 'DISPLAY_MQTT' ):
-            self.sensor_display_count += 1
+            self.sensor_count += 1
 
         # Draw UI elements.
         self.ui = displayio.TileGrid(
             self.ui_bmp,
             pixel_shader=self.ui_bmp.pixel_shader,
-            tile_width=24, tile_height=24, width=8, height=self.sensor_display_count )
+            tile_width=24, tile_height=24, width=8, height=self.sensor_count )
         self.ui.x = 40
-        for y in range( 0, self.sensor_display_count ):
+        for y in range( 0, self.sensor_count ):
             self.set_ui_line( y, False, True if self.selected_idx == y else False )
         self.group.append( self.ui )
 
@@ -386,39 +389,44 @@ async def refresh_display( display : DisplayHandler, sensors : SensorBank ):
     
         await asyncio.sleep( 0.33 )
 
-async def main():
-    sensors = SensorBank()
-    sensor_display_count = 0
-    for i in range( 0, sensors.count()  ):
-        sensor_display_count += len( sensors[i]['display_keys'] )
+async def handle_buttons( display : DisplayHandler ):
 
     button_up = digitalio.DigitalInOut( board.BUTTON_UP )
     button_up.switch_to_input( pull=digitalio.Pull.DOWN )
     button_down = digitalio.DigitalInOut( board.BUTTON_DOWN )
     button_down.switch_to_input( pull=digitalio.Pull.DOWN )
+
+    while True:
+        # Check buttons state.
+        if button_down.value:
+            display.selected_idx += 1
+            if display.sensor_count <= display.selected_idx:
+                display.selected_idx = 0
+            print( display.selected_idx )
+        elif button_up.value:
+            display.selected_idx -= 1
+            if display.sensor_count <= display.selected_idx:
+                display.selected_idx = display.sensor_count - 1
+            print( display.selected_idx )
+        
+        await asyncio.sleep( 0.1 )
+
+async def main():
+    sensors = SensorBank()
     
-    display = DisplayHandler( board.DISPLAY, sensor_display_count )
+    display = DisplayHandler( board.DISPLAY, sensors )
 
     socket_pool = connect_wifi()
     mqtt = MQTTHandler( display, socket_pool )
     i2c = busio.I2C( board.SCL, board.SDA, frequency=50000 )
 
     while True:
-        
-        # Check buttons state.
-        if button_down.value:
-            display.selected_idx += 1
-            if sensor_display_count <= display.selected_idx:
-                display.selected_idx = 0
-        elif button_up.value:
-            display.selected_idx -= 1
-            if sensor_display_count <= display.selected_idx:
-                display.selected_idx = sensor_display_count - 1
 
         poller_task = asyncio.create_task( poll_all_sensors( sensors, mqtt, i2c ) )
         mqtt_task = asyncio.create_task( refresh_mqtt( mqtt, display, sensors ) )
         redraw_task = asyncio.create_task( refresh_display( display, sensors ) )
-        await asyncio.gather( poller_task, mqtt_task, redraw_task )
+        buttons_task = asyncio.create_task( handle_buttons( display ) )
+        await asyncio.gather( poller_task, mqtt_task, redraw_task, buttons_task )
         
 if '__main__' == __name__:
     asyncio.run( main() )
