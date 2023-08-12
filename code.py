@@ -131,117 +131,146 @@ def poll_all_sensors( sensors, mqtt_client, i2c ):
             mqtt_client = None
     return sensors
 
-def redraw( last_y, char_frame, sensors, char_bmp, balloon_bmp, font, mqtt ):
+class Display:
 
-    display = board.DISPLAY
-    group = displayio.Group()
+    def __init__( self, display ):
+        self.group = displayio.Group()
+        self.font = bitmap_font.load_font( os.getenv( 'FONT_BDF' ) )
+        self.last_y = 20
+        self.balloon_bmp = displayio.OnDiskBitmap( 'balloons.bmp' )
+        
+        # Setup background tilemap.
+        if os.getenv( 'TILE_BITMAP' ):
+            self.platform_bmp = displayio.OnDiskBitmap( 'platform.bmp' )
+            self.platform = displayio.TileGrid(
+                self.platform_bmp,
+                pixel_shader=self.platform_bmp.pixel_shader,
+                tile_width=16, tile_height=16, width=15, height=15,
+                default_tile=0 )
+            self.group.append( self.platform )
 
-    # Refresh character sprite.
-    char_sprite = None
-    if char_bmp:
-        char_sprite = displayio.TileGrid(
-            char_bmp,
-            pixel_shader=char_bmp.pixel_shader,
+        if os.getenv( 'DISPLAY_IP' ):
+            self.ip_label = label.Label(
+                font=self.font, text='Connecting...' )
+            self.ip_label.x = 10
+            self.ip_label.y = self.last_y
+            self.last_y += 20
+            self.group.append( self.ip_label )
+    
+        if os.getenv( 'DISPLAY_MQTT' ): 
+            self.mqtt_label = label.Label( font=self.font, text='Waiting for MQTT...' )
+            self.mqtt_label.x = 10
+            self.mqtt_label.y = self.last_y
+            self.last_y += 20
+            self.group.append( self.mqtt_label )
+
+        # Setup avatar character.
+        char_paths = os.getenv( 'CHAR_BITMAPS' ).split( ',' )
+        if 0 < len( char_paths ):
+            char_bmp_path = char_paths[random.randint( 0, len( char_paths ) - 1 )]
+            self.char_bmp = displayio.OnDiskBitmap( char_bmp_path )
+        self.char_sprite = displayio.TileGrid(
+            self.char_bmp,
+            pixel_shader=self.char_bmp.pixel_shader,
             tile_width=32, tile_height=32, width=1, height=1,
             default_tile=0 )
-        char_sprite.y = display.height - 32
-        char_sprite.x = int( display.width / 2 ) - 16
-        char_sprite[0, 0] = char_frame
+        self.char_frame = 0
+        self.group.append( self.char_sprite )
 
-    if os.getenv( 'DISPLAY_IP' ):
-        ip_label = label.Label(
-            font=font, text='{}'.format( wifi.radio.ipv4_address ) )
-        ip_label.x = 10
-        ip_label.y = last_y
-        group.append( ip_label )
-        last_y += 20
+        self.display = display
+        self.display.brightness = 0.3
+        self.display.root_group = self.group
 
-    if os.getenv( 'DISPLAY_MQTT' ): 
-        mqtt_label = label.Label( \
-            font=font, text='MQTT Connected' \
-            if mqtt else 'MQTT Not Connected' )
-        mqtt_label.x = 10
-        mqtt_label.y = last_y
-        group.append( mqtt_label )
-        last_y += 20
+    def move_char( self, x, y ):
+        self.char_sprite.x = x
+        self.char_sprite.y = y
 
-    for i in range( 0, sensors.count()  ):
-        for key in sensors[i]['display_keys']:
-            try:
-                display_key = sensors[i]['display_keys'][key]
+    def increment_char_frame( self ):
+        self.char_frame += 1
+        if 3 <= self.char_frame:
+            self.char_frame = 0
+        if self.char_sprite:
+            self.char_sprite[0, 0] = self.char_frame
 
-                # Draw status icon.
-                sprite = displayio.TileGrid(
-                    balloon_bmp,
-                    pixel_shader=balloon_bmp.pixel_shader,
-                    tile_width=16, tile_height=16, width=1, height=1,
-                    default_tile=0 )
-                sprite.x = 10
-                sprite.y = last_y - int( sprite.tile_height / 2 )
-                if 'values' in sensors[i] and sensors[i]['values']:
-                    if key in sensors[i]['thresholds'] and \
-                    sensors[i]['values'][display_key] >= \
-                    sensors[i]['thresholds'][key]:
-                        # Alert balloon.
-                        sprite[0, 0] = 8
-                else:
-                    # Question balloon.
-                    sprite[0, 0] = 9
-                group.append( sprite )
+    def update_ip_label( self ):
+        if self.ip_label:
+            self.ip_label.text = '{}'.format( wifi.radio.ipv4_address )
+    
+    def update_mqtt_label( self, mqtt ):
+        if mqtt and self.mqtt_label:
+            self.mqtt_label.text = 'MQTT Connected' if mqtt else 'MQTT Not Connected'
 
-                # Draw status text.
-                if 'values' in sensors[i] and sensors[i]['values']:
-                    lbl_text = '{}: {}'.format(
-                        display_key, sensors[i]['values'][display_key] )
-                else:
-                    lbl_text = '{}: Waiting...'.format( display_key )
+    def update_sensor_label( self, sensor, key ):
+        display_key = sensor['display_keys'][key]
 
-                lbl = label.Label( font=font, text=lbl_text )
-                lbl.x = 30
-                lbl.y = last_y
-                last_y += 20
-                group.append( lbl )
-            except Exception as e:
-                print( 'label error: {}: {}'.format( type( e ), e ) )
-                if os.getenv( 'DEBUG' ):
-                    traceback.print_exception( e )
+        # Draw status icon.
+        if not 'balloons' in sensor:
+            sensor['balloons'] = {}
 
-    if char_sprite:
-        group.append( char_sprite )
+        if not key in sensor['balloons']:
+            sensor['balloons'][key] = displayio.TileGrid(
+                self.balloon_bmp,
+                pixel_shader=self.balloon_bmp.pixel_shader,
+                tile_width=16, tile_height=16, width=1, height=1,
+                default_tile=0 )
+            sensor['balloons'][key].x = 10
+            sensor['balloons'][key].y = self.last_y - int( sensor['balloons'][key].tile_height / 2 )
+            self.group.append( sensor['balloons'][key] )
+        
+        if 'values' in sensor and sensor['values']:
+            if key in sensor['thresholds'] and \
+            sensor['values'][display_key] >= \
+            sensor['thresholds'][key]:
+                # Alert balloon.
+                sensor['balloons'][key][0, 0] = 8
+            else:
+                # Blank balloon.
+                sensor['balloons'][key][0, 0] = 0
+        else:
+            # Question balloon.
+            sensor['balloons'][key][0, 0] = 9
 
-    display.show( group )
+        # Draw status text.
+        if 'values' in sensor and sensor['values']:
+            if 'display_calcs' in sensor and key in sensor['display_calcs']:
+                lbl_text = '{}: {}'.format( display_key, 
+                    sensor['display_calcs'][key]( sensor['values'][display_key] ) )
+            else:
+                lbl_text = '{}: {}'.format( display_key, sensor['values'][display_key] )
+        else:
+            lbl_text = '{}: Waiting...'.format( display_key )
+
+        if not 'labels' in sensor:
+            sensor['labels'] = {}
+
+        if not key in sensor['labels']:
+            sensor['labels'][key] = label.Label( font=self.font, text=lbl_text )
+            sensor['labels'][key].x = 30
+            sensor['labels'][key].y = self.last_y
+            self.last_y += 20
+            self.group.append( sensor['labels'][key] )
+        else:
+            sensor['labels'][key].text = lbl_text
+
+        return sensor
 
 def main():
-    display = board.DISPLAY
+    display = Display( board.DISPLAY )
 
     group = displayio.Group()
-    font = bitmap_font.load_font( os.getenv( 'FONT_BDF' ) )
-    display.brightness = 0.3
     check_cycles = os.getenv( 'CHECK_CYCLES' )
 
-    connect_label = label.Label(
-        font=font, text='{}'.format( 'Connecting...' ) )
-    connect_label.x = int( display.width / 2 ) - int( connect_label.width / 2 )
-    connect_label.y = int( display.height / 2 )
-    group.append( connect_label )
-    display.show( group )
+    #connect_label = label.Label(
+    #    font=font, text='{}'.format( 'Connecting...' ) )
+    #connect_label.x = int( display.width / 2 ) - int( connect_label.width / 2 )
+    #connect_label.y = int( display.height / 2 )
+    #group.append( connect_label )
+    #display.show( group )
 
     socket_pool = connect_wifi()
     mqtt_client = None
     i2c = busio.I2C( board.SCL, board.SDA, frequency=50000 )
     sensors = SensorBank()
-
-    balloon_bmp = displayio.OnDiskBitmap( 'balloons.bmp' )
-
-    char_bmp = None
-    char_sprite = None
-    char_frame = 0
-    if os.getenv( 'CHAR_BITMAPS' ):
-        char_paths = os.getenv( 'CHAR_BITMAPS' ).split( ',' )
-        if 0 < len( char_paths ):
-            char_bmp_path = \
-                char_paths[random.randint( 0, len( char_paths ) - 1 )]
-            char_bmp = displayio.OnDiskBitmap( char_bmp_path )
 
     while True:
         # Update MQTT client if exists/connected, or reconnect.
@@ -257,6 +286,7 @@ def main():
             except (MQTT.MMQTTException, OSError) as e:
                 print( 'MQTT: {}: {}', type( e ), e )
                 mqtt_client = None
+                display.mqtt_label( mqtt_client )
                 
         elif not None in [x['sensor'] for x in sensors] and \
         not None in [x['last_resp'] for x in sensors]:
@@ -266,9 +296,12 @@ def main():
                 print( 'MQTT: {}: {}'.format( type( e ), e ) )
                 mqtt_client = None
 
-        char_frame += 1
-        if 3 <= char_frame:
-            char_frame = 0
+        display.move_char(
+            int( display.display.width / 2 ) - 16,
+            display.display.height - 32 )
+        display.increment_char_frame()
+        display.update_ip_label()
+        display.update_mqtt_label( mqtt_client )
 
         if os.getenv( 'CHECK_CYCLES' ) <= check_cycles:
             sensors = poll_all_sensors( sensors, mqtt_client, i2c )
@@ -276,10 +309,17 @@ def main():
         else:
             check_cycles += 1
 
-        redraw(
-            20, char_frame, sensors, char_bmp, balloon_bmp, font, mqtt_client )
+        for i in range( 0, sensors.count()  ):
+            for key in sensors[i]['display_keys']:
+                #try:
+                sensors[i] = display.update_sensor_label( sensors[i], key )
+                #except Exception as e:
+                #    print( 'label error: {}: {}'.format( type( e ), e ) )
+                #    if os.getenv( 'DEBUG' ):
+                #        traceback.print_exception( e )
 
         time.sleep( 0.1 )
 
 if '__main__' == __name__:
     main()
+
