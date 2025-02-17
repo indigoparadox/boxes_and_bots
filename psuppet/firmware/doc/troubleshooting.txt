@@ -1,0 +1,5 @@
+
+* Unit seems generally unresponsive. Eye LED won't come on and shell won't
+  respond.
+   - Did the motor wires come loose from the terminal block?
+
