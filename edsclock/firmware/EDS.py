@@ -1,1 +1,1 @@
-../../drivers/eds/EDS.py
+../../drivers/circuitpython/eds/EDS.py

@@ -29,3 +29,11 @@ Modular mounted sensor box.
 
 Improvised/hacked convention freebie robot. 
 
+### lcdbackpack
+
+Tiny terminal based on the ESP32/SparkFun LCD Backpack.
+
+### edsclock
+
+Simple clock based on CircuitPython/QTPy and 2 displays and a HW clock from electricdollarstore.com.
+
