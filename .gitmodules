@@ -1,6 +1,6 @@
 [submodule "pca8574"]
-	path = perfbox/software/pca8574
+	path = perfbox/firmware/pca8574
 	url = https://github.com/indigoparadox/micropython-pca8574
 [submodule "ili9341"]
-	path = perfbox/software/ili9341
+	path = perfbox/firmware/ili9341
 	url = https://github.com/indigoparadox/micropython-ili9341
