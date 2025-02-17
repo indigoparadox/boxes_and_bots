@@ -1,6 +1,0 @@
-[submodule "ssd1306"]
-	path = ssd1306
-	url = https://github.com/indigoparadox/micropython-adafruit-ssd1306
-[submodule "sgp30"]
-	path = sgp30
-	url = https://github.com/indigoparadox/micropython-sgp30
