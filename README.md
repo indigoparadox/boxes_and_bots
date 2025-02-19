@@ -37,3 +37,7 @@ Tiny terminal based on the ESP32/SparkFun LCD Backpack.
 
 Simple clock based on CircuitPython/QTPy and 2 displays and a HW clock from electricdollarstore.com.
 
+### mqttcon
+
+A console that displays incoming MQTT data.
+
