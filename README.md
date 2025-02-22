@@ -41,3 +41,7 @@ Simple clock based on CircuitPython/QTPy and 2 displays and a HW clock from elec
 
 A console that displays incoming MQTT data.
 
+### beepterm
+
+Crammed a bunch of stuff into a 3D printed shell w/ esp8266.
+
