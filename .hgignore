@@ -1,0 +1,3 @@
+glob:*.swp
+glob:*.o
+glob:envsensor
