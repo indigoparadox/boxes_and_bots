@@ -45,3 +45,7 @@ A console that displays incoming MQTT data.
 
 Crammed a bunch of stuff into a 3D printed shell w/ esp8266.
 
+### mspstat
+
+A MSP430-based device that reads a DHT11 and displays the output on an LCD with a custom blinking anime girl face.
+
