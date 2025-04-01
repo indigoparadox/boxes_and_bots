@@ -1,3 +1,6 @@
+# for encoding/decoding see https://docs.pixycam.com/wiki/doku.php?id=wiki:v2:protocol_reference
+
+import utime as time
 import ujson as json
 
 class PixyBlock( object ):
@@ -10,8 +13,14 @@ class CMUcam5( object ):
     SYNC_NOCK = [0xae, 0xc1]
     SYNC_CK = [0xaf, 0xc1]
 
+    TYPE_GET_RESOLUTION = 12
+    TYPE_GET_VERSION = 14
     TYPE_GET_BLOCKS = 32
+    TYPE_GET_RGB = 112
+
+    TYPE_SET_BRIGHTNESS = 16
     TYPE_SET_LED = 20
+    TYPE_SET_LAMP = 22
 
     SZ_HEADER = 6
     SZ_BLOCK = 14
@@ -53,6 +62,33 @@ class CMUcam5( object ):
         self._verify_cksum( cksum, payload )
         return pkt_type, payload
 
+    def init( self, wait_ms=5000, callback=None):
+        """wait for connection, typically takes 2-3 seconds after power on"""
+        t = time.ticks_ms()
+        while True:
+            try:
+                if callback:
+                    callback()
+                self.get_version() # device connection test
+                break
+            except:
+                if time.ticks_diff(time.ticks_ms(), t) > wait_ms:
+                    raise
+
+    def get_version( self ):
+        _, pl = self._call( self.TYPE_GET_VERSION, [] )
+        return pl # todo: split payload
+
+    def get_resolution( self ):
+        _, pl = self._call( self.TYPE_GET_RESOLUTION, [0] )
+        return pl[0] + (pl[1]<<8), pl[2] + (pl[3]<<8)
+
+    def set_brightness( self, value ):
+        self._call( self.TYPE_SET_BRIGHTNESS, [value] )
+
+    def set_lamp( self, upper, lower):
+        self._call( self.TYPE_SET_LAMP, [upper, lower] )
+
     def set_led( self, r, g, b ):
         self._call( self.TYPE_SET_LED, [r, g, b] )
 
@@ -77,3 +113,7 @@ class CMUcam5( object ):
             pb.age = pl[offset + 13]
             blks_out += [pb]
         return blks_out
+
+    def get_rgb( self, x, y, saturate):
+        pt, pl = self._call( self.TYPE_GET_RGB, [x & 0xff, x << 8, y & 0xff, y << 8, saturate] )
+        return pl[2], pl[1], pl[0]
