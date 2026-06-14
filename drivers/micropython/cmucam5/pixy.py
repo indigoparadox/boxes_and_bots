@@ -115,5 +115,5 @@ class CMUcam5( object ):
         return blks_out
 
     def get_rgb( self, x, y, saturate):
-        pt, pl = self._call( self.TYPE_GET_RGB, [x & 0xff, x << 8, y & 0xff, y << 8, saturate] )
+        pt, pl = self._call( self.TYPE_GET_RGB, [x & 0xff, x >> 8, y & 0xff, y >> 8, saturate] )
         return pl[2], pl[1], pl[0]
